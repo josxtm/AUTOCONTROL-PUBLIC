@@ -50,6 +50,8 @@ jobs:
           script: |
             adb push "$RUNNER_TEMP/synthetic-ocr-model.traineddata" /data/local/tmp/synthetic-ocr-model.traineddata
             gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Enforce original GUI parity before publishing APK
+        run: python3 tools/gui_parity_gate.py .
       - name: Upload validated public preview
         uses: actions/upload-artifact@v4
         with:
