@@ -9,7 +9,7 @@ BLOCK_EXT = {".keystore", ".jks", ".p12", ".pfx", ".pem", ".key", ".csv",
              ".apk", ".aab", ".gz", ".zip", ".7z", ".pdf", ".docx"}
 READ_EXT = {".gradle", ".java", ".kt", ".kts", ".py", ".sh", ".md",
             ".yml", ".yaml", ".xml", ".html", ".properties", ".txt"}
-SKIP = {".git", ".gradle", "build", ".idea", "__pycache__"}
+SKIP = {".kotlin", ".git", ".gradle", "build", ".idea", "__pycache__"}
 NAME = re.compile(r"ct_data|telecontrol_ct|privado|confidencial|credential|secret|mo[._ -]?01033", re.I)
 CORPORATE = re.compile(r"\b(?:UFD|Naturgy|Eiffage|NaturalCor|TERED|GNFT)\b|MO[. -]?01033", re.I)
 NET = re.compile(r"(?:IP\s+LAN|IP\s+TC|LAN\s*\+\s*(?:1|2|3|9|10|11|13|14)|eth0\.2)", re.I)
@@ -21,10 +21,16 @@ def check(root):
     root = Path(root)
     problems = []
     for p in root.rglob("*"):
-        if not p.is_file() or p.is_symlink():
+        if not p.is_file() and not p.is_symlink():
             continue
         rel = p.relative_to(root).as_posix()
         if any(part in SKIP for part in p.relative_to(root).parts):
+            continue
+        if p.is_symlink():
+            problems.append((rel, "unreviewed symbolic link"))
+            continue
+        if any(part in {"assets", "raw"} for part in p.relative_to(root).parts):
+            problems.append((rel, "bundled data requires separate review"))
             continue
         if p.suffix.lower() in BLOCK_EXT or NAME.search(rel):
             problems.append((rel, "filename or file type"))
@@ -46,6 +52,8 @@ def check(root):
         except UnicodeError:
             problems.append((rel, "non-text content"))
             continue
+        if p.name == "AndroidManifest.xml" and "android.permission.INTERNET" in s:
+            problems.append((rel, "network permission in offline app"))
         if CORPORATE.search(s) or NET.search(s) or KEY.search(s) or PASSWORD.search(s) or IP.search(s):
             problems.append((rel, "sensitive-pattern candidate"))
     return sorted(problems)
