@@ -8,8 +8,8 @@ import org.junit.Test
 class ComposeSmokeTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun scroll(text: String): SemanticsNodeInteraction {
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text))
-        return compose.onNodeWithText(text)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text, substring = true))
+        return compose.onNodeWithText(text, substring = true)
     }
     @Test fun launchEditDocumentAndDiary() {
         compose.onNodeWithText("AutoControL Público").assertExists()
