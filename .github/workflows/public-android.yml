@@ -8,7 +8,7 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,19 +27,47 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build isolated public preview
-        run: gradle --no-daemon :app:assembleDebug
-      - name: Verify APK signature and package ID
-        shell: bash
+      - name: Unit tests, Android Lint and isolated public preview
+        run: gradle --no-daemon :storage:testDebugUnitTest :documents:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Verify APK identity, version, signature, permissions and resources
+        run: python3 tools/inspect_apk.py app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME/build-tools/35.0.0" | tee app/build/apk-verification.txt
+      - name: Enable emulator acceleration
         run: |
-          set -euo pipefail
-          APK=app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.josxtm.autocontrol.community'"
-      - uses: actions/upload-artifact@v4
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prepare licensed OCR test model outside the APK
+        run: |
+          curl --fail --location --retry 2 https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/eng.traineddata -o "$RUNNER_TEMP/synthetic-ocr-model.traineddata"
+          echo "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2  $RUNNER_TEMP/synthetic-ocr-model.traineddata" | sha256sum --check
+      - name: Real Android storage, recovery, Compose and local OCR tests
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: AUTOCONTROL-PUBLIC-PUBLIC-PREVIEW-NO-UPDATE
-          path: app/build/outputs/apk/debug/app-debug.apk
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb push "$RUNNER_TEMP/synthetic-ocr-model.traineddata" /data/local/tmp/synthetic-ocr-model.traineddata
+            gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Upload validated public preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: AUTOCONTROL-PUBLIC-PREVIEW-NO-PRIVATE-UPDATE
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/apk-verification.txt
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AUTOCONTROL-PUBLIC-VALIDATION
+          path: |
+            app/build/reports/
+            storage/build/reports/
+            documents/build/reports/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
           retention-days: 14
