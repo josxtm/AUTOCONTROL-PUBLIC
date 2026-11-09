@@ -91,11 +91,6 @@ class MainActivity : ComponentActivity() {
                 item { Spacer(Modifier.height(8.dp)); Text("AutoControL Público", style = MaterialTheme.typography.headlineMedium) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
                 item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
-                item { Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf("Registros", "Diario", "Documentos", "Copias", "SNIFFER", "Configuración").forEachIndexed { i, name ->
-                        TextButton(onClick = { tab = i }, enabled = enabled) { Text(if (tab == i) "● $name" else name) }
-                    }
-                } }
                 item { Text(m.message, style = MaterialTheme.typography.bodyMedium); if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 when (tab) {
                     0 -> {
