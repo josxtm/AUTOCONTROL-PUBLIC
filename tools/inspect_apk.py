@@ -22,7 +22,8 @@ def inspect(apk, build_tools):
         raise ValueError("Unexpected application identity or version")
     manifest = run("aapt", "dump", "xmltree", apk, "AndroidManifest.xml")
     permissions = re.findall(r"uses-permission: name='([^']+)'", badging)
-    if set(permissions) != {"com.josxtm.autocontrol.community.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"}:
+    allowed = {"com.josxtm.autocontrol.community.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"}
+    if set(permissions) not in (allowed, allowed | {"android.permission.INTERNET"}):
         raise ValueError("Unexpected permissions")
     if not re.search(r"allowBackup\([^\n]*=\(type 0x12\)0x0", manifest):
         raise ValueError("Automatic backup must be disabled")

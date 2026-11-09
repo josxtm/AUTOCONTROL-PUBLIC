@@ -19,13 +19,13 @@ class ComposeSmokeTest {
         scroll("Texto editable").performTextInput("Synthetic editable text")
         scroll("Guardar documento").performClick()
         // LazyColumn may dispose off-screen status semantics. Bring it into view before waiting.
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(3)
         compose.waitUntil(15000) { compose.onAllNodesWithText("Documento guardado.").fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         compose.onNodeWithText("Diario", substring = true).performClick()
         scroll("Nueva entrada").performTextInput("Synthetic UI diary")
         scroll("Añadir entrada").performClick()
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(3)
         compose.waitUntil(15000) { compose.onAllNodesWithText("Entrada guardada.").fetchSemanticsNodes().isNotEmpty() }
         scroll("Synthetic UI diary").assertExists()
     }
