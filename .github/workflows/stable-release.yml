@@ -61,8 +61,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "AUTOCONTROL_KEYSTORE_PATH=$RUNNER_TEMP/autocontrol-release.jks" >> "$GITHUB_ENV"
-          echo "AUTOCONTROL_RELEASE_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-          echo "AUTOCONTROL_RELEASE_VERSION_NAME=0.3.$GITHUB_RUN_NUMBER-public" >> "$GITHUB_ENV"
+          echo "AUTOCONTROL_RELEASE_VERSION_CODE=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+          echo "AUTOCONTROL_RELEASE_VERSION_NAME=0.3.$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT-public" >> "$GITHUB_ENV"
       - name: Run tests, Lint, and assemble signed APK
         env:
           AUTOCONTROL_KEYSTORE_PASSWORD: ${{ secrets.AUTOCONTROL_KEYSTORE_PASSWORD }}
