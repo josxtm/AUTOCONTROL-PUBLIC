@@ -1,6 +1,6 @@
 # AutoControL Público
 
-Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.community`, versión `0.2.0-public`, `versionCode 2`. No sustituye ni accede a las aplicaciones privadas.
+Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.community`, versión `0.3.0-public`, `versionCode 3`. No sustituye ni accede a las aplicaciones privadas.
 
 ## Módulos
 
@@ -10,6 +10,12 @@ Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.communi
 - `ocr`: Tesseract4Android 4.9.0 estándar, sin modelos incluidos. Importa explícitamente un modelo traineddata compatible y reconoce imágenes seleccionadas por el usuario **sin red**. El texto reconocido se revisa en el editor antes de guardarlo.
 
 No hay permiso de Internet, telemetría, diagnósticos de infraestructura, plantillas, catálogos ni documentos incorporados. El diagnóstico solo indica esquema local, número de documentos y disponibilidad del modelo. Capturas y copias automáticas del sistema están deshabilitadas. El selector y el teclado tienen políticas propias: elige proveedores locales autorizados.
+
+## Interfaz Material 3 y movimiento
+
+La edición 0.3.0 incorpora navegación horizontal animada entre las cuatro secciones, chips de navegación con estado seleccionado, microinteracciones de presión en las acciones principales, accesos rápidos desplegables y paneles expansibles para la información de registros y copias. Se utilizan componentes estándar de Compose Material 3 sin una biblioteca externa, respetando las escalas de animación configuradas en Android.
+
+Los cambios son exclusivamente visuales: no alteran esquemas, almacenamiento, OCR, funciones de importación, exportación ni copia. Se mantiene el mismo `applicationId` público, pero las APK debug firmadas temporalmente pueden requerir desinstalar la preview pública anterior (lo que borra sus datos). Consulta [la guía de movimiento](docs/MATERIAL3_MOTION.md) y [SIGNING.md](SIGNING.md).
 
 ## Catálogos y trabajo
 

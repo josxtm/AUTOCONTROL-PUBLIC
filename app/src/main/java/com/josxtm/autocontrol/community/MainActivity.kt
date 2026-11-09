@@ -6,6 +6,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -15,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -64,13 +78,29 @@ class MainActivity : ComponentActivity() {
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
 }
 
+// Material 3 ripples remain in place; the subtle press scale provides an extra tactile cue.
 @Composable private fun Action(text: String, enabled: Boolean, action: () -> Unit) {
-    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text(text) }
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (enabled && pressed) 0.985f else 1f,
+        animationSpec = tween(durationMillis = 120),
+        label = "Pulsación de botón"
+    )
+    Button(
+        onClick = action,
+        enabled = enabled,
+        interactionSource = interactions,
+        modifier = Modifier.fillMaxWidth().scale(scale)
+    ) { Text(text) }
 }
 
 @Composable private fun Workspace(m: WorkspaceModel, pickCatalog: () -> Unit, pickDocument: () -> Unit,
     pickModel: () -> Unit, pickImage: () -> Unit, exportDocument: () -> Unit, createBackup: () -> Unit, restoreBackup: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
+    var quickMenu by remember { mutableStateOf(false) }
+    var showFields by remember { mutableStateOf(true) }
+    var showBackupHelp by remember { mutableStateOf(true) }
     var confirm by remember { mutableStateOf("") }
     var fieldsDialog by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -78,18 +108,84 @@ class MainActivity : ComponentActivity() {
     var passphrase by remember { mutableStateOf("") }
     val enabled = !m.busy
     Surface(Modifier.fillMaxSize()) {
-        Column(Modifier.safeDrawingPadding().fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            LazyColumn(Modifier.widthIn(max = 840.dp).fillMaxWidth().weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Spacer(Modifier.height(8.dp)); Text("AutoControL Público", style = MaterialTheme.typography.headlineMedium) }
-                item { Text("Edición independiente · trabajo local sin conexión") }
-                item { TextButton(onClick = m::cycleTheme, enabled = enabled) { Text("Tema: " + listOf("Sistema", "Claro", "Oscuro")[m.theme]) } }
-                item { Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf("Registros", "Diario", "Documentos", "Copias").forEachIndexed { i, name ->
-                        TextButton(onClick = { tab = i }, enabled = enabled) { Text(if (tab == i) "● $name" else name) }
+        Column(
+            Modifier.safeDrawingPadding().fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(
+                Modifier.widthIn(max = 840.dp).fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Spacer(Modifier.height(8.dp))
+                Text("AutoControL Público", style = MaterialTheme.typography.headlineMedium)
+                Text("Edición independiente · trabajo local sin conexión", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = m::cycleTheme, enabled = enabled) {
+                        Text("Tema: " + listOf("Sistema", "Claro", "Oscuro")[m.theme])
                     }
-                } }
-                item { Text(m.message, style = MaterialTheme.typography.bodyMedium); if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                when (tab) {
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { quickMenu = !quickMenu }, enabled = enabled) {
+                        Text(if (quickMenu) "Cerrar accesos" else "Accesos rápidos")
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Registros", "Diario", "Documentos", "Copias").forEachIndexed { i, name ->
+                        FilterChip(
+                            selected = tab == i,
+                            onClick = { tab = i },
+                            enabled = enabled,
+                            label = { Text(name) }
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = quickMenu,
+                    enter = expandVertically(animationSpec = tween(240)) + fadeIn(animationSpec = tween(180)),
+                    exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(140))
+                ) {
+                    ElevatedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Ir directamente a", style = MaterialTheme.typography.labelLarge)
+                            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                                listOf("Registros", "Diario", "Documentos", "Copias").forEachIndexed { i, name ->
+                                    TextButton(onClick = { tab = i; quickMenu = false }, enabled = enabled) {
+                                        Text("Ir a $name")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                AnimatedVisibility(
+                    visible = m.message.isNotBlank(),
+                    enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(150)),
+                    exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(120))
+                ) {
+                    Text(m.message, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            AnimatedContent(
+                targetState = tab,
+                modifier = Modifier.widthIn(max = 840.dp).fillMaxWidth().weight(1f),
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    (slideInHorizontally(animationSpec = tween(280)) { width -> if (forward) width / 5 else -width / 5 } +
+                        fadeIn(animationSpec = tween(180))) togetherWith
+                        (slideOutHorizontally(animationSpec = tween(220)) { width -> if (forward) -width / 5 else width / 5 } +
+                            fadeOut(animationSpec = tween(160)))
+                },
+                label = "Transición entre secciones"
+            ) { activeTab ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item { Spacer(Modifier.height(8.dp)) }
+                when (activeTab) {
                     0 -> {
                         item { Text("Catálogo local", style = MaterialTheme.typography.titleLarge) }
                         item { Text("JSON con lista de registros y campos simples. La búsqueda usa el identificador exacto configurado al importar.") }
@@ -98,7 +194,29 @@ class MainActivity : ComponentActivity() {
                         item { Editor("Identificador exacto", m.query, 256, enabled, true) { m.query = it } }
                         item { Action("Buscar registro", enabled, m::search) }
                         item { Action("Campos visibles", enabled && m.fields.isNotEmpty()) { selected = m.visible; fieldsDialog = true } }
-                        m.record.filterKeys { it in m.visible }.forEach { (key, value) -> item { Text("$key: ${value ?: "(vacío)"}") } }
+                        if (m.record.isNotEmpty()) {
+                            item {
+                                OutlinedButton(onClick = { showFields = !showFields }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (showFields) "Ocultar campos del registro" else "Mostrar campos del registro")
+                                }
+                            }
+                        }
+                        m.record.filterKeys { it in m.visible }.forEach { (key, value) ->
+                            item {
+                                AnimatedVisibility(
+                                    visible = showFields,
+                                    enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(170)),
+                                    exit = shrinkVertically(animationSpec = tween(180)) + fadeOut(animationSpec = tween(150))
+                                ) {
+                                    ElevatedCard(Modifier.fillMaxWidth()) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            Text(key, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                            Text(value ?: "(vacío)")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (m.activeId != null) {
                             item { Editor("Nota del registro", m.note, 16000, enabled) { m.note = it } }
                             item { Action("Guardar nota", enabled, m::saveNote) }
@@ -135,7 +253,25 @@ class MainActivity : ComponentActivity() {
                     }
                     3 -> {
                         item { Text("Copias cifradas", style = MaterialTheme.typography.titleLarge) }
-                        item { Text("Incluyen catálogo, campos, notas, diario y adjuntos. El modelo OCR y el tema no se incluyen. Contraseña de 12 a 256 caracteres: no se guarda ni se puede recuperar. Elige un proveedor local autorizado en el selector.") }
+                        item {
+                            TextButton(onClick = { showBackupHelp = !showBackupHelp }) {
+                                Text(if (showBackupHelp) "Ocultar información de seguridad" else "Mostrar información de seguridad")
+                            }
+                        }
+                        item {
+                            AnimatedVisibility(
+                                visible = showBackupHelp,
+                                enter = expandVertically(animationSpec = tween(240)) + fadeIn(animationSpec = tween(180)),
+                                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
+                            ) {
+                                ElevatedCard(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "Incluyen catálogo, campos, notas, diario y adjuntos. El modelo OCR y el tema no se incluyen. Contraseña de 12 a 256 caracteres: no se guarda ni se puede recuperar. Elige un proveedor local autorizado en el selector.",
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                            }
+                        }
                         item { OutlinedTextField(passphrase, { if (it.length <= 256) passphrase = it }, label = { Text("Contraseña de la copia") },
                             modifier = Modifier.fillMaxWidth(), enabled = enabled, singleLine = true,
                             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false)) }
@@ -145,6 +281,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
+                }
             }
         }
     }
