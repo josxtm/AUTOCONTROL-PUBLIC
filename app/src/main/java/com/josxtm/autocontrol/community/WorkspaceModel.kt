@@ -28,6 +28,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     var busy by mutableStateOf(false); private set
     var message by mutableStateOf("Preparado. Solo almacenamiento local."); private set
     var theme by mutableIntStateOf(preferences.getInt("theme", 0)); private set
+    var tabletTheme by mutableIntStateOf(preferences.getInt("tabletTheme", 3).coerceIn(0, 9)); private set
     var identifier by mutableStateOf("id")
     var query by mutableStateOf("")
     var record by mutableStateOf<Map<String, String?>>(emptyMap()); private set
@@ -66,6 +67,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     }
     fun refresh() = task({ snapshot() }, ::show)
     fun cycleTheme() { theme = (theme + 1) % 3; preferences.edit().putInt("theme", theme).apply() }
+    fun selectTabletTheme(index: Int) { if (index in 0..9) { tabletTheme = index; preferences.edit().putInt("tabletTheme", index).apply() } }
     fun search() {
         val id = query
         task({ Pair(store.find(id), store.note(id)) }) { (value, body) ->
