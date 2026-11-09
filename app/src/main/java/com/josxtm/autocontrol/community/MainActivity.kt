@@ -1,6 +1,7 @@
 package com.josxtm.autocontrol.community
 
 import android.os.Bundle
+import com.josxtm.autocontrol.community.sniffer.SnifferPanel
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
             val dark = model.theme == 2 || (model.theme == 0 && isSystemInDarkTheme())
-            MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = autoColorScheme(model.tabletTheme)) {
                 Workspace(model,
                     pickCatalog = { choose { catalog.launch(arrayOf("*/*")) } },
                     pickDocument = { choose { document.launch(arrayOf("*/*")) } },
@@ -78,13 +79,20 @@ class MainActivity : ComponentActivity() {
     var passphrase by remember { mutableStateOf("") }
     val enabled = !m.busy
     Surface(Modifier.fillMaxSize()) {
-        Column(Modifier.safeDrawingPadding().fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            LazyColumn(Modifier.widthIn(max = 840.dp).fillMaxWidth().weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.safeDrawingPadding().fillMaxSize()) {
+            Column(Modifier.width(132.dp).fillMaxHeight().padding(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("AutoControL", style = MaterialTheme.typography.titleMedium)
+                listOf("CT", "Diario", "Documentos", "Copias", "SNIFFER", "Config.").forEachIndexed { index, label ->
+                    if (tab == index) Button(onClick = { tab = index }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(5.dp)) { Text(label, style = MaterialTheme.typography.labelMedium) }
+                    else TextButton(onClick = { tab = index }, modifier = Modifier.fillMaxWidth()) { Text(label, style = MaterialTheme.typography.labelMedium) }
+                }
+            }
+            LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Spacer(Modifier.height(8.dp)); Text("AutoControL Público", style = MaterialTheme.typography.headlineMedium) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
-                item { TextButton(onClick = m::cycleTheme, enabled = enabled) { Text("Tema: " + listOf("Sistema", "Claro", "Oscuro")[m.theme]) } }
+                item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
                 item { Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf("Registros", "Diario", "Documentos", "Copias").forEachIndexed { i, name ->
+                    listOf("Registros", "Diario", "Documentos", "Copias", "SNIFFER", "Configuración").forEachIndexed { i, name ->
                         TextButton(onClick = { tab = i }, enabled = enabled) { Text(if (tab == i) "● $name" else name) }
                     }
                 } }
@@ -142,6 +150,20 @@ class MainActivity : ComponentActivity() {
                         item { Action("Exportar copia cifrada", enabled) { if (m.preparePassphrase(passphrase)) { passphrase = ""; createBackup() } } }
                         item { Action("Restaurar copia cifrada", enabled) { if (m.preparePassphrase(passphrase)) { passphrase = ""; confirm = "restore" } } }
                         item { Text("Diagnóstico local: esquema público 1 · ${m.documents.size} documentos · modelo OCR ${if (m.ocrReady) "disponible" else "no importado"}. Sin diagnósticos de redes.") }
+                    }
+                    4 -> {
+                        item { SnifferPanel(Modifier.fillMaxWidth().height(640.dp)) }
+                    }
+                    5 -> {
+                        item { Text("Configuración · Apariencia", style = MaterialTheme.typography.titleLarge) }
+                        item { Text("Diez temas aprobados · iconografía V10") }
+                        autoThemes.forEachIndexed { index, theme ->
+                            item {
+                                OutlinedButton(onClick = { m.selectTabletTheme(index) }, modifier = Modifier.fillMaxWidth()) {
+                                    Text((if (m.tabletTheme == index) "✓  " else "") + theme.name)
+                                }
+                            }
+                        }
                     }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
