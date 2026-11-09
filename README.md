@@ -50,3 +50,11 @@ gradle :app:connectedDebugAndroidTest
 Las pruebas OCR requieren aportar por separado el modelo de prueba verificado por el workflow en `/data/local/tmp/synthetic-ocr-model.traineddata`; nunca se empaqueta. Todos los registros, documentos e imágenes de prueba se generan sintéticamente. CI ejecuta las pruebas Android en API 35, incluidas recuperación cifrada, integridad, SQLite real, interfaz Compose y OCR sobre una imagen generada. Solo publica la APK si todos los pasos pasan. El artefacto incluye huella del certificado y hash SHA-256 de la APK. Las versiones fijadas de AndroidX tienen avisos Lint de actualización disponibles; no se desactiva ningún control de privacidad ni de análisis.
 
 Las APK debug de CI son **previews públicas con firma efímera**; no actualizan aplicaciones privadas ni garantizan continuidad de firma entre ejecuciones. [SIGNING.md](SIGNING.md) define un futuro canal permanente público independiente. [MIGRATION.md](MIGRATION.md) detalla las limitaciones.
+
+## Actualizaciones APK sin desinstalar
+
+La edición pública conserva el paquete `com.josxtm.autocontrol.community`. Las APK de vista previa generadas por el workflow normal pueden estar firmadas con claves de depuración diferentes y **no son actualizaciones garantizadas**.
+
+El canal permanente usa `Stable signed AutoControL APK` y publica el artefacto `AUTOCONTROL-STABLE-UPDATE-APK`: todas las versiones sucesivas se firman con el **mismo certificado privado** y llevan `versionCode` creciente. En Android se instalan encima sin desinstalar, conservando notas, diario, JSON y documentos.
+
+**Configuración obligatoria una sola vez:** la clave del nuevo canal debe crearse y guardarse en los secretos protegidos de GitHub siguiendo [SIGNING.md](SIGNING.md); no se ha generado ni añadido al repositorio. Las antiguas versiones de prueba con otra firma **no se pueden actualizar directamente**. Exporta primero una copia cifrada `.acpb` y restáurala tras instalar la primera APK estable. No desinstales ninguna versión con datos sin verificar antes la copia.
