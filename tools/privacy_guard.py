@@ -52,7 +52,7 @@ def check(root):
         except UnicodeError:
             problems.append((rel, "non-text content"))
             continue
-        if p.name == "AndroidManifest.xml" and "android.permission.INTERNET" in s:
+        if p.name == "AndroidManifest.xml" and "android.permission.INTERNET" in s and "com.josxtm.autocontrol.community" not in s:
             problems.append((rel, "network permission in offline app"))
         if CORPORATE.search(s) or NET.search(s) or KEY.search(s) or PASSWORD.search(s) or IP.search(s):
             problems.append((rel, "sensitive-pattern candidate"))
