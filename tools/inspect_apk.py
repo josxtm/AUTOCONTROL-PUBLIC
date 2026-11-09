@@ -2,7 +2,6 @@
 """Inspect the actual preview package, permissions, resources and signing certificate."""
 import argparse
 import hashlib
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -19,8 +18,7 @@ def inspect(apk, build_tools):
         return subprocess.check_output([str(tools / name), *map(str, args)], text=True)
     signature = run("apksigner", "verify", "--print-certs", apk)
     badging = run("aapt", "dump", "badging", apk)
-    expected_code = os.getenv("AUTOCONTROL_RELEASE_VERSION_CODE", "2")
-    if "package: name='com.josxtm.autocontrol.community' versionCode='" + expected_code + "'" not in badging:
+    if "package: name='com.josxtm.autocontrol.community' versionCode='2'" not in badging:
         raise ValueError("Unexpected application identity or version")
     manifest = run("aapt", "dump", "xmltree", apk, "AndroidManifest.xml")
     permissions = re.findall(r"uses-permission: name='([^']+)'", badging)
