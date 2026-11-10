@@ -77,6 +77,8 @@ class MainActivity : ComponentActivity() {
     var selected by remember { mutableStateOf<List<String>>(emptyList()) }
     var licenses by remember { mutableStateOf(false) }
     var passphrase by remember { mutableStateOf("") }
+    val appContext = LocalContext.current
+    val displayName = appContext.applicationInfo.loadLabel(appContext.packageManager).toString()
     val enabled = !m.busy
     Surface(Modifier.fillMaxSize()) {
         Row(Modifier.safeDrawingPadding().fillMaxSize()) {
@@ -92,7 +94,7 @@ class MainActivity : ComponentActivity() {
                 SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan)
             } else {
             LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { Spacer(Modifier.height(8.dp)); Text("AutoControL Público", style = MaterialTheme.typography.headlineMedium) }
+                item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
                 item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
                 item { Text(m.message, style = MaterialTheme.typography.bodyMedium); if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }
