@@ -38,13 +38,14 @@ private fun ipAt(base: String, offset: Int): String? =
 fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val profile = remember { context.getSharedPreferences("sniffer-ssh-profile", 0) }
     val scope = rememberCoroutineScope()
     val transport = remember { SshTransport(context.getSharedPreferences("sniffer-known-hosts", 0)) }
     var tab by remember { mutableIntStateOf(0) }
     var base by remember { mutableStateOf("") }
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("22") }
-    var user by remember { mutableStateOf("") }
+    var host by remember { mutableStateOf(profile.getString("host", "").orEmpty()) }
+    var port by remember { mutableStateOf(profile.getString("port", "22").orEmpty()) }
+    var user by remember { mutableStateOf(profile.getString("user", "").orEmpty()) }
     var password by remember { mutableStateOf("") }
     var command by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Sin conexión SSH") }
@@ -139,6 +140,15 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                     OutlinedTextField(port, { port = it.take(5) }, label = { Text("Puerto") }, singleLine = true)
                     OutlinedTextField(user, { user = it.take(128) }, label = { Text("Usuario") }, singleLine = true)
                     OutlinedTextField(password, { password = it.take(256) }, label = { Text("Contraseña temporal") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                    OutlinedButton(onClick = {
+                        val p = port.toIntOrNull()
+                        if (p != null && EndpointPolicy.valid(host.trim(), p, user.trim())) {
+                            profile.edit().putString("host", host.trim())
+                                .putString("port", port.trim())
+                                .putString("user", user.trim()).apply()
+                            status = "Perfil guardado localmente (sin contraseña)."
+                        } else status = "Revisa host, puerto y usuario."
+                    }) { Text("Guardar perfil") }
                     Button(onClick = ::connect, enabled = !active && !transport.connected()) { Text("Conectar") }
                     OutlinedButton(onClick = { scope.launch(Dispatchers.IO) { transport.disconnect(); withContext(Dispatchers.Main) { shell = false; status = "Desconectado" } } }) { Text("Desconectar") }
                     Text(status)
