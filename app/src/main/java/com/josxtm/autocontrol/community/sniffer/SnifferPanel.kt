@@ -60,6 +60,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
     var historyVisible by remember { mutableStateOf(false) }
     var event by remember { mutableStateOf("Sin diagnósticos") }
     val history = remember { mutableStateListOf<String>() }
+    val notConfigured = remember { mutableStateMapOf<String, Boolean>() }
     DisposableEffect(transport) {
         onDispose { scanJob?.cancel(); transport.disconnect() }
     }
@@ -67,6 +68,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         scanJob?.cancel()
         scanRunning = false
         results = emptyMap()
+        notConfigured.clear()
         base = selectedLan?.trim().orEmpty()
         event = if (selectedCt == null) "Selecciona un CT en Registros, o introduce la red manualmente."
             else if (selectedLan.isNullOrBlank()) "El CT seleccionado no contiene IP LAN: introduce una base manual."
@@ -202,6 +204,10 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                             for ((name, offset) in targets) {
                                 ensureActive()
                                 val address = ipAt(requestedBase, offset)
+                                if (notConfigured[name] == true) {
+                                    results = results + (name to "No configurado")
+                                    continue
+                                }
                                 val result = withContext(Dispatchers.IO) {
                                     if (address == null) "IP no válida" else try {
                                         if (InetAddress.getByName(address).isReachable(900)) "$address · responde"
@@ -226,6 +232,10 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                             for ((name, offset) in targets) {
                                 ensureActive()
                                 val address = ipAt(requestedBase, offset)
+                                if (notConfigured[name] == true) {
+                                    results = results + (name to "No configurado")
+                                    continue
+                                }
                                 val result = if (address == null) "IP no válida" else try {
                                     val response = withContext(Dispatchers.IO) {
                                         transport.diagnostic("ping -c 1 -W 2 $address")
@@ -255,10 +265,18 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 items(targets) { (name, offset) ->
                     val computed = ipAt(base, offset) ?: "—"
                     ListItem(headlineContent = { Text(name) },
-                        supportingContent = { Text(results[name] ?: computed) })
+                        supportingContent = { Text(results[name] ?: computed) },
+                        trailingContent = {
+                            if (tab == 2) {
+                                Checkbox(checked = notConfigured[name] == true,
+                                    onCheckedChange = { notConfigured[name] = it })
+                                Text("No instalado", style = MaterialTheme.typography.labelSmall)
+                            }
+                        })
                 }
             }
-            Text("La falta de respuesta ICMP no confirma desconexión. No se realizan acciones de telemando.", style = MaterialTheme.typography.bodySmall)
+            Text("En Equipos puedes marcar los dispositivos no instalados para excluirlos del diagnóstico. La falta de respuesta ICMP no confirma desconexión.",
+                style = MaterialTheme.typography.bodySmall)
         }
     }
     approval?.let { (prompt, deferred) ->
