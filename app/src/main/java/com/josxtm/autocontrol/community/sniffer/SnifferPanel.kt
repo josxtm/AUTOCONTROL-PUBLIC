@@ -166,7 +166,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(command, { command = it.take(2048) }, modifier = Modifier.weight(1f), label = { Text("Comando") }, singleLine = true)
                         Button(onClick = {
-                            val cmd = command; command = ""; history.add(cmd)
+                            val cmd = command; command = ""; if (CommandHistoryPolicy.rememberable(cmd)) history.add(cmd)
                             if (history.size > 20) history.removeAt(0)
                             scope.launch { try { withContext(Dispatchers.IO) { transport.send(cmd) } } catch (_: Exception) { status = "Error al enviar comando" } }
                         }, enabled = shell && command.isNotBlank()) { Text("Enviar") }
