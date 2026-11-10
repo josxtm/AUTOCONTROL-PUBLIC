@@ -1,6 +1,7 @@
 package com.josxtm.autocontrol.community.sniffer
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -8,6 +9,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -21,18 +27,13 @@ import java.net.InetAddress
 
 private val targets = listOf("Router" to 1, "CC T1" to 2, "CC T2" to 3, "SABT T2" to 9, "SABT T1" to 11, "FFAA1" to 13, "Remota" to 14)
 
-private fun ipAt(base: String, offset: Int): String? {
-    val parts = base.trim().split(".")
-    if (parts.size != 4) return null
-    val bytes = parts.map { it.toIntOrNull()?.takeIf { x -> x in 0..255 } ?: return null }
-    val n = bytes[3] + offset
-    if (n > 255) return null // Never silently cross a subnet without its mask
-    return bytes.take(3).joinToString(".") + "." + n
-}
+private fun ipAt(base: String, offset: Int): String? =
+    try { LanTargets.at(base, offset) } catch (_: IllegalArgumentException) { null }
 
 @Composable
-fun SnifferPanel(modifier: Modifier = Modifier) {
+fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val transport = remember { SshTransport(context.getSharedPreferences("sniffer-known-hosts", 0)) }
     var tab by remember { mutableIntStateOf(0) }
@@ -50,8 +51,23 @@ fun SnifferPanel(modifier: Modifier = Modifier) {
     var approval by remember { mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null) }
     var results by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var scanRunning by remember { mutableStateOf(false) }
+    var scanJob by remember { mutableStateOf<Job?>(null) }
+    var historyVisible by remember { mutableStateOf(false) }
+    var event by remember { mutableStateOf("Sin diagnósticos") }
     val history = remember { mutableStateListOf<String>() }
-    DisposableEffect(transport) { onDispose { transport.disconnect() } }
+    DisposableEffect(transport) {
+        onDispose { scanJob?.cancel(); transport.disconnect() }
+    }
+    LaunchedEffect(selectedCt, selectedLan) {
+        scanJob?.cancel()
+        scanRunning = false
+        results = emptyMap()
+        base = selectedLan?.substringBefore('/')?.trim().orEmpty()
+        event = if (selectedCt == null) "Selecciona un CT en Registros, o introduce la red manualmente."
+            else if (selectedLan.isNullOrBlank()) "El CT seleccionado no contiene IP LAN: introduce una base manual."
+            else "Red cargada del CT seleccionado. Comprueba su máscara antes del escaneo."
+    }
+
 
     fun append(text: String) { output = (output + text).takeLast(20000) }
     fun connect() {
@@ -146,29 +162,49 @@ fun SnifferPanel(modifier: Modifier = Modifier) {
                         OutlinedButton(onClick = { diagnostic(cmd) }, enabled = transport.connected(), modifier = Modifier.fillMaxWidth()) { Text(cmd) }
                     }
                     OutlinedButton(onClick = { askShell = true }, enabled = transport.connected() && !shell) { Text("Activar terminal") }
+                    OutlinedButton(onClick = { clipboard.setText(AnnotatedString(output)) }, enabled = output.isNotEmpty()) { Text("Copiar salida") }
                     OutlinedButton(onClick = { output = ""; history.clear() }) { Text("Limpiar salida") }
+                    OutlinedButton(onClick = { historyVisible = !historyVisible }) { Text(if (historyVisible) "Ocultar historial" else "Ver historial") }
+
                     Text("Historial de sesión", style = MaterialTheme.typography.titleSmall)
-                    history.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (historyVisible) history.forEach { previous ->
+                        OutlinedButton(onClick = { command = previous }, modifier = Modifier.fillMaxWidth()) {
+                            Text(previous.take(48), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
                 }
             }
         } else {
-            OutlinedTextField(base, { base = it.take(15) }, label = { Text("IP LAN base del CT · introducir manualmente") }, singleLine = true)
-            if (tab == 0 || tab == 1) Button(onClick = {
-                val ip = base
-                scanRunning = true
-                scope.launch {
-                    val newResults = withContext(Dispatchers.IO) {
-                        targets.associate { (name, offset) ->
-                            val address = ipAt(ip, offset)
-                            name to if (address == null) "IP no válida" else try {
-                                if (InetAddress.getByName(address).isReachable(900)) "$address · responde"
-                                else "$address · sin respuesta"
-                            } catch (_: Exception) { "$address · error de diagnóstico" }
-                        }
+            Text(event, style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(base, { base = it.take(15); results = emptyMap() }, label = { Text("IP LAN base del CT · modificar manualmente") }, singleLine = true)
+            if (tab == 0 || tab == 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val requestedBase = base
+                    results = emptyMap()
+                    scanRunning = true
+                    scanJob = scope.launch {
+                        try {
+                            for ((name, offset) in targets) {
+                                ensureActive()
+                                val address = ipAt(requestedBase, offset)
+                                val result = withContext(Dispatchers.IO) {
+                                    if (address == null) "IP no válida" else try {
+                                        if (InetAddress.getByName(address).isReachable(900)) "$address · responde"
+                                        else "$address · sin respuesta"
+                                    } catch (_: Exception) { "$address · error de diagnóstico" }
+                                }
+                                ensureActive()
+                                results = results + (name to result)
+                            }
+                            event = "Escaneo completo: " + results.size + " equipos comprobados."
+                        } catch (_: CancellationException) {
+                            event = "Escaneo cancelado."
+                        } finally { scanRunning = false }
                     }
-                    results = newResults; scanRunning = false
-                }
-            }, enabled = !scanRunning && ipAt(base, 14) != null) { Text(if (scanRunning) "Escaneando…" else "Iniciar comprobación") }
+                }, enabled = !scanRunning && ipAt(base, 14) != null) { Text(if (scanRunning) "Escaneando…" else "Iniciar comprobación") }
+                OutlinedButton(onClick = { scanJob?.cancel() }, enabled = scanRunning) { Text("Cancelar") }
+            }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 items(targets) { (name, offset) ->
                     val computed = ipAt(base, offset) ?: "—"
