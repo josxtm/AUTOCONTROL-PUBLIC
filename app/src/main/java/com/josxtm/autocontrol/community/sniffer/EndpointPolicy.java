@@ -13,7 +13,14 @@ public final class EndpointPolicy {
     }
     private static final Set<String> DIAGNOSTICS = Set.of("whoami", "pwd", "date", "uname -a", "df -h");
     public static boolean diagnostic(String command) {
-        return DIAGNOSTICS.contains(command);
+        if (DIAGNOSTICS.contains(command)) return true;
+        if (command == null) return false;
+        String prefix = "ping -c 1 -W 2 ";
+        if (!command.startsWith(prefix)) return false;
+        String ip = command.substring(prefix.length());
+        if (!ip.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}")) return false;
+        for (String part : ip.split("\\.")) if (Integer.parseInt(part) > 255) return false;
+        return true;
     }
     public static boolean trusted(String existing, String received) {
         return existing != null && received != null && existing.equals(received);
