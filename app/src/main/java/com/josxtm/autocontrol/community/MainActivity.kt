@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                         item { Text("Diagnóstico local: esquema público 1 · ${m.documents.size} documentos · modelo OCR ${if (m.ocrReady) "disponible" else "no importado"}. Sin diagnósticos de redes.") }
                     }
                     4 -> {
-                        item { SnifferPanel(Modifier.fillMaxWidth().height(640.dp)) }
+                        item { SnifferPanel(Modifier.fillMaxWidth().height(640.dp), selectedCt = m.activeId, selectedLan = m.selectedCtLan) }
                     }
                     5 -> {
                         item { Text("Configuración · Apariencia", style = MaterialTheme.typography.titleLarge) }
