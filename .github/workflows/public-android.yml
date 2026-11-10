@@ -8,6 +8,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      AUTOCONTROL_BUILD_NUMBER: ${{ github.run_number }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -50,12 +52,18 @@ jobs:
           script: |
             adb push "$RUNNER_TEMP/synthetic-ocr-model.traineddata" /data/local/tmp/synthetic-ocr-model.traineddata
             gradle --no-daemon :app:connectedDebugAndroidTest
+      - name: Name APK with tablet version and compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/AutoControL_tablet_v.1.0 - comp. ${AUTOCONTROL_BUILD_NUMBER}.apk"
       - name: Upload validated public preview
         uses: actions/upload-artifact@v4
         with:
-          name: AUTOCONTROL-PUBLIC-PREVIEW-NO-PRIVATE-UPDATE
+          name: AutoControL_tablet_v.1.0 - comp. ${{ github.run_number }}
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/AutoControL_tablet_v.1.0 - comp. *.apk
             app/build/apk-verification.txt
           if-no-files-found: error
           retention-days: 14

@@ -33,6 +33,14 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     var query by mutableStateOf("")
     var record by mutableStateOf<Map<String, String?>>(emptyMap()); private set
     var activeId by mutableStateOf<String?>(null); private set
+    // Read only from the currently selected private catalog record, never logged or exported.
+    val selectedCtLan: String?
+        get() = record.entries.firstOrNull { entry ->
+            val key = entry.key.trim().uppercase(java.util.Locale.ROOT)
+                .replace("_", " ").replace(Regex("\\s+"), " ")
+            key == "IP LAN" || key == "IP_LAN"
+        }?.value?.trim()?.takeIf { it.isNotEmpty() }
+
     var note by mutableStateOf("")
     var journalText by mutableStateOf("")
     var journal by mutableStateOf<List<WorkspaceStore.Entry>>(emptyList()); private set
