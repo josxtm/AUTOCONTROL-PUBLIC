@@ -203,6 +203,38 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                         } finally { scanRunning = false }
                     }
                 }, enabled = !scanRunning && ipAt(base, 14) != null) { Text(if (scanRunning) "Escaneando…" else "Iniciar comprobación") }
+                OutlinedButton(onClick = {
+                    val requestedBase = base
+                    results = emptyMap()
+                    scanRunning = true
+                    scanJob = scope.launch {
+                        try {
+                            for ((name, offset) in targets) {
+                                ensureActive()
+                                val address = ipAt(requestedBase, offset)
+                                val result = if (address == null) "IP no válida" else try {
+                                    val response = withContext(Dispatchers.IO) {
+                                        transport.diagnostic("ping -c 1 -W 2 $address")
+                                    }
+                                    val reachable = response.contains("0% packet loss") ||
+                                        response.contains("1 packets received") ||
+                                        response.contains("1 received")
+                                    if (reachable) "$address · responde"
+                                    else "$address · sin respuesta"
+                                } catch (_: CancellationException) {
+                                    throw CancellationException()
+                                } catch (_: Exception) { "$address · error de diagnóstico" }
+                                ensureActive()
+                                results = results + (name to result)
+                            }
+                            event = "Diagnóstico desde Mango finalizado: " + results.size + " equipos."
+                        } catch (_: CancellationException) {
+                            event = "Diagnóstico desde Mango cancelado."
+                        } finally { scanRunning = false }
+                    }
+                }, enabled = !scanRunning && transport.connected() && ipAt(base, 14) != null) {
+                    Text("Ping desde Mango")
+                }
                 OutlinedButton(onClick = { scanJob?.cancel() }, enabled = scanRunning) { Text("Cancelar") }
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
