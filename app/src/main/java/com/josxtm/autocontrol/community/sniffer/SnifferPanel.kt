@@ -32,7 +32,7 @@ private fun ipAt(base: String, offset: Int): String? =
         val address = base.trim().substringBefore("/")
         val prefix = base.trim().substringAfter("/", "24").toInt()
         LanTargets.at(address, prefix, offset)
-    } catch (_: IllegalArgumentException) { null } catch (_: NumberFormatException) { null }
+    } catch (_: IllegalArgumentException) { null }
 
 @Composable
 fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null) {
