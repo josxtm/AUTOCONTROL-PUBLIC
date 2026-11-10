@@ -28,7 +28,11 @@ import java.net.InetAddress
 private val targets = listOf("Router" to 1, "CC T1" to 2, "CC T2" to 3, "SABT T2" to 9, "SABT T1" to 11, "FFAA1" to 13, "Remota" to 14)
 
 private fun ipAt(base: String, offset: Int): String? =
-    try { LanTargets.at(base, offset) } catch (_: IllegalArgumentException) { null }
+    try {
+        val address = base.trim().substringBefore("/")
+        val prefix = base.trim().substringAfter("/", "24").toInt()
+        LanTargets.at(address, prefix, offset)
+    } catch (_: IllegalArgumentException) { null } catch (_: NumberFormatException) { null }
 
 @Composable
 fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null) {
@@ -62,7 +66,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         scanJob?.cancel()
         scanRunning = false
         results = emptyMap()
-        base = selectedLan?.substringBefore('/')?.trim().orEmpty()
+        base = selectedLan?.trim().orEmpty()
         event = if (selectedCt == null) "Selecciona un CT en Registros, o introduce la red manualmente."
             else if (selectedLan.isNullOrBlank()) "El CT seleccionado no contiene IP LAN: introduce una base manual."
             else "Red cargada del CT seleccionado. Comprueba su máscara antes del escaneo."
@@ -177,7 +181,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
             }
         } else {
             Text(event, style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(base, { base = it.take(15); results = emptyMap() }, label = { Text("IP LAN base del CT · modificar manualmente") }, singleLine = true)
+            OutlinedTextField(base, { base = it.take(18); results = emptyMap() }, label = { Text("IP LAN base del CT (IPv4 o CIDR)") }, singleLine = true)
             if (tab == 0 || tab == 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     val requestedBase = base
