@@ -44,7 +44,7 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
     }
     public synchronized void setting(String key, String value) { meta(getWritableDatabase(), key, value); }
     static String identifier(LinkedHashMap<String, String> record, String field) throws IOException {
-        String id = record.get(field);
+        String id = field.equals("@ct") ? CtFields.registration(record) : record.get(field);
         if (id == null || id.trim().isEmpty() || id.length() > 256) throw JsonCodec.invalid();
         return id;
     }
@@ -62,24 +62,36 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
         meta(db, "fields", JsonCodec.encode(map));
     }
     public synchronized int importCatalog(Reader input, String field) throws IOException {
+        return importCatalog(input,field,"");
+    }
+    public synchronized int importCatalog(Reader input, String field, String filename) throws IOException {
         if (field.isEmpty() || field.length() > 128) throw JsonCodec.invalid();
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
-        try (JsonReader reader = JsonCodec.reader(input)) {
-            db.delete("records", null, null); // Cascades notes, never touches independent journal.
-            Set<String> fields = new LinkedHashSet<>();
-            int count = 0;
-            reader.beginArray();
-            while (reader.hasNext()) {
-                if (++count > MAX_ROWS) throw JsonCodec.invalid();
-                insertRecord(db, JsonCodec.record(reader), field, fields);
+        try {
+            db.execSQL("CREATE TEMP TABLE IF NOT EXISTS incoming_ct (id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL)");
+            db.delete("incoming_ct",null,null);
+            Set<String> fields=new LinkedHashSet<>();
+            CatalogReader.Report report=CatalogReader.read(input,field,(record,idField)->{
+                fields.addAll(record.keySet());if(fields.size()>JsonCodec.MAX_FIELDS)throw JsonCodec.invalid();
+                ContentValues row=new ContentValues();row.put("id",identifier(record,idField));row.put("payload",JsonCodec.encode(record));db.insertOrThrow("incoming_ct",null,row);
+            });
+            try(Cursor c=db.rawQuery("SELECT count(*) FROM notes WHERE id NOT IN (SELECT id FROM incoming_ct)",null)){
+                c.moveToFirst();if(c.getLong(0)>0)throw new CatalogException(CatalogException.Reason.NOTES);
             }
-            reader.endArray(); JsonCodec.end(reader);
-            if (count == 0) throw JsonCodec.invalid();
-            storeFields(db, fields); meta(db, "identifier", field); meta(db, "visible", "");
-            db.setTransactionSuccessful();
-            return count;
-        } finally { db.endTransaction(); }
+            // UPDATE rather than REPLACE: preserve notes whose foreign key remains valid.
+            db.execSQL("UPDATE records SET payload=(SELECT payload FROM incoming_ct WHERE incoming_ct.id=records.id) WHERE id IN (SELECT id FROM incoming_ct)");
+            db.execSQL("INSERT INTO records SELECT * FROM incoming_ct WHERE id NOT IN (SELECT id FROM records)");
+            db.execSQL("DELETE FROM records WHERE id NOT IN (SELECT id FROM incoming_ct)");
+            storeFields(db,fields);meta(db,"identifier",report.identifier);meta(db,"visible","");
+            meta(db,"catalog_count",Integer.toString(report.accepted));meta(db,"catalog_rejected",Integer.toString(report.rejected));meta(db,"catalog_time",Long.toString(System.currentTimeMillis()));
+            meta(db,"catalog_reason",report.rejected==0?"Sin rechazos":"Matrícula fuera del formato 28/45 alfanumérico");
+            meta(db,"catalog_file",filename);
+            db.delete("incoming_ct",null,null);db.setTransactionSuccessful();return report.accepted;
+        } catch(CatalogException e){throw e;}
+        catch(android.database.sqlite.SQLiteConstraintException e){throw new CatalogException(CatalogException.Reason.DUPLICATE);}
+        catch(IOException|IllegalStateException|NumberFormatException e){throw new CatalogException(CatalogException.Reason.FORMAT);}
+        finally {db.endTransaction();}
     }
     public synchronized List<String> fields() throws IOException {
         String value = setting("fields");
@@ -96,7 +108,7 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
         setting("visible", JsonCodec.encode(value));
     }
     public synchronized LinkedHashMap<String, String> find(String id) throws IOException {
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT payload FROM records WHERE id=?", new String[]{id})) {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT payload FROM records WHERE id=?", new String[]{setting("identifier").equals("@ct")?CtFields.normalize(id):id})) {
             return c.moveToFirst() ? JsonCodec.decode(c.getString(0)) : null;
         }
     }

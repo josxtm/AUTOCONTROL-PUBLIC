@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.josxtm.autocontrol.community.storage.CtFields
+import com.josxtm.autocontrol.community.storage.CatalogException
 import com.josxtm.autocontrol.community.storage.WorkspaceStore
 import com.josxtm.autocontrol.community.storage.PortableBackup
 import com.josxtm.autocontrol.community.documents.DocumentEngine
@@ -34,12 +36,9 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     var record by mutableStateOf<Map<String, String?>>(emptyMap()); private set
     var activeId by mutableStateOf<String?>(null); private set
     // Read only from the currently selected private catalog record, never logged or exported.
-    val selectedCtLan: String?
-        get() = record.entries.firstOrNull { entry ->
-            val key = entry.key.trim().uppercase(java.util.Locale.ROOT)
-                .replace("_", " ").replace(Regex("\\s+"), " ")
-            key == "IP LAN" || key == "IP_LAN"
-        }?.value?.trim()?.takeIf { it.isNotEmpty() }
+    val selectedCtLan: String? get()=runCatching{CtFields.lan(record)}.getOrNull()
+    val selectedCtName: String? get()=runCatching{CtFields.name(record)}.getOrNull()
+    var importReport by mutableStateOf("");private set
 
     var note by mutableStateOf("")
     var journalText by mutableStateOf("")
@@ -62,8 +61,13 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
                 val result = withContext(Dispatchers.IO) { work() }
                 apply(result)
                 if (message == "Procesando en el dispositivo…") message = "Operación completada."
-            } catch (_: Exception) {
-                message = "No se pudo completar. Revisa formato, límites, identificadores únicos, contraseña, espacio y acceso al archivo. Los datos anteriores se conservan si falla una sustitución."
+            } catch (error: Exception) {
+                message = when((error as? CatalogException)?.reason){
+                    CatalogException.Reason.NOTES -> "Importación rechazada: excluiría centros con notas. El catálogo y las notas anteriores se conservan."
+                    CatalogException.Reason.DUPLICATE -> "Importación rechazada: matrículas duplicadas tras normalización. Se conserva el catálogo anterior."
+                    CatalogException.Reason.FORMAT -> "Importación rechazada: estructura, UTF-8, campos, límites o alias incompatibles. Revisa el formato del catálogo. Se conserva el catálogo anterior."
+                    null -> "No se pudo completar. Revisa formato, límites, identificadores únicos, contraseña, espacio y acceso al archivo. Los datos anteriores se conservan si falla una sustitución."
+                }
             } finally { busy = false }
         }
     }
@@ -77,7 +81,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     fun cycleTheme() { theme = (theme + 1) % 3; preferences.edit().putInt("theme", theme).apply() }
     fun selectTabletTheme(index: Int) { if (index in 0..9) { tabletTheme = index; preferences.edit().putInt("tabletTheme", index).apply() } }
     fun search() {
-        val id = query
+        val id = if(identifier=="@ct")CtFields.normalize(query)else query
         task({ Pair(store.find(id), store.note(id)) }) { (value, body) ->
             record = value ?: emptyMap(); activeId = if (value == null) null else id; note = if (value == null) "" else body
             message = if (value == null) "Sin coincidencias." else "Registro encontrado."
@@ -99,12 +103,14 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     fun importCatalog(uri: Uri) {
         val field = identifier
         task({
+            val file=resolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{if(it.moveToFirst())it.getString(0)else "JSON"}?:"JSON"
             resolver.openInputStream(uri).use { input ->
                 requireNotNull(input)
-                store.importCatalog(InputStreamReader(input, StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)), field)
+                store.importCatalog(InputStreamReader(input, StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)), field,file.take(256))
             }
-            snapshot()
-        }) { show(it); record = emptyMap(); activeId = null; note = ""; message = "Catálogo importado. El diario se conserva." }
+            snapshot() to "${store.setting("catalog_file")} · CT incorporados: ${store.setting("catalog_count")} · rechazados: ${store.setting("catalog_rejected")} · ${store.setting("catalog_reason")} · ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(store.setting("catalog_time").toLong()))}"
+        }) { (data,report) -> show(data); record = emptyMap(); activeId = null; note = ""; importReport=report
+            message = "Importación completada en SQLite. $importReport" }
     }
     fun importDocument(uri: Uri) = task({
         val title = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
