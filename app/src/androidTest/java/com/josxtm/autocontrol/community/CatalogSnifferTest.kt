@@ -28,12 +28,12 @@ class CatalogSnifferTest {
         ui.activityRule.scenario.recreate()
         // Only this test window may capture its synthetic fixture; release FLAG_SECURE stays intact.
         ui.activityRule.scenario.onActivity { it.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) }
-        ui.onAllNodesWithText("SNIFFER LAN",substring=false).first().performClick()
+        ui.onAllNodesWithText("SNIFFER LAN",substring=false)[0].performClick()
         ui.onNodeWithText("Matrícula CT").performTextInput("28 syn001")
         ui.onNodeWithText("Buscar",substring=false).performClick()
         ui.waitUntil(20000){ui.onAllNodesWithText("Synthetic CT").fetchSemanticsNodes().isNotEmpty()}
         listOf(1,2,3,9,11,13,14).forEach{ui.onNodeWithText(listOf(192,0,2,it).joinToString(".")).assertExists()}
-        ui.onAllNodesWithText("MangoSSH",substring=false).first().performClick();ui.onNodeWithText("MangoSSH — Terminal").assertExists()
+        ui.onAllNodesWithText("MangoSSH",substring=false)[0].performClick();ui.onNodeWithText("MangoSSH — Terminal").assertExists()
         ui.onNodeWithText("Escaneo",substring=false).performClick()
         // Real Surface screenshot from instrumentation, not a vector mockup. Synthetic CT only.
         val screenshot=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
