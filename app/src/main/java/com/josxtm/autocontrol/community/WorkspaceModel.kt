@@ -54,7 +54,10 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     private var pendingPass: CharArray? = null
     init { refresh() }
     private fun <T> task(work: () -> T, apply: (T) -> Unit = {}) {
-        if (busy) return
+        if (busy) {
+            message = "Operación no iniciada: hay otra tarea en curso. Reinténtalo cuando termine."
+            return
+        }
         busy = true; message = "Procesando en el dispositivo…"
         viewModelScope.launch {
             try {
@@ -68,6 +71,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
                     CatalogException.Reason.FORMAT -> "Importación rechazada: estructura, UTF-8, campos, límites o alias incompatibles. Revisa el formato del catálogo. Se conserva el catálogo anterior."
                     null -> "No se pudo completar. Revisa formato, límites, identificadores únicos, contraseña, espacio y acceso al archivo. Los datos anteriores se conservan si falla una sustitución."
                 }
+                if (importReport.startsWith("Importando catálogo")) importReport = message
             } finally { busy = false }
         }
     }
@@ -100,7 +104,17 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         val before = if (reset) Long.MAX_VALUE else journal.lastOrNull()?.id ?: Long.MAX_VALUE
         task({ store.journal(before) }) { if (it.isEmpty()) message = "No hay más entradas." else journal = it }
     }
+    fun catalogSelectionCancelled() {
+        importReport = "Selección cancelada: no se ha importado ningún archivo."
+        message = importReport
+    }
     fun importCatalog(uri: Uri) {
+        if (busy) {
+            importReport = "No se inició la importación: hay otra operación en curso."
+            message = importReport
+            return
+        }
+        importReport = "Importando catálogo JSON… Comprobando formato y guardando registros."
         val field = identifier
         task({
             val file=resolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{if(it.moveToFirst())it.getString(0)else "JSON"}?:"JSON"
