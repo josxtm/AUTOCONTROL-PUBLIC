@@ -23,20 +23,20 @@ fun IndustrialCtPanel(
         if (maxWidth >= 760.dp) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Card(Modifier.weight(.37f).fillMaxHeight(), shape = MaterialTheme.shapes.medium) {
-                    CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxSize())
+                    CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxSize(), true)
                 }
                 Card(Modifier.weight(.63f).fillMaxHeight(), shape = MaterialTheme.shapes.medium) {
-                    CtRecordDetails(model, enabled, Modifier.fillMaxSize())
+                    CtRecordDetails(model, enabled, Modifier.fillMaxSize(), true)
                 }
             }
         } else {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Card(Modifier.fillMaxWidth()) {
-                    CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxWidth())
+                    CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxWidth(), false)
                 }
                 Card(Modifier.fillMaxWidth()) {
-                    CtRecordDetails(model, enabled, Modifier.fillMaxWidth())
+                    CtRecordDetails(model, enabled, Modifier.fillMaxWidth(), false)
                 }
             }
         }
@@ -46,9 +46,9 @@ fun IndustrialCtPanel(
 @Composable
 private fun CtSearchTools(
     model: WorkspaceModel, enabled: Boolean, importCatalog: () -> Unit,
-    chooseFields: () -> Unit, modifier: Modifier
+    chooseFields: () -> Unit, modifier: Modifier, scrollable: Boolean
 ) {
-    Column(modifier.verticalScroll(rememberScrollState()).padding(14.dp),
+    Column(modifier.then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Text("CENTROS DE TRANSFORMACIÓN", style = MaterialTheme.typography.titleMedium)
         Text("Catálogo privado · solo almacenamiento local", style = MaterialTheme.typography.labelSmall,
@@ -79,8 +79,8 @@ private fun CtSearchTools(
 }
 
 @Composable
-private fun CtRecordDetails(model: WorkspaceModel, enabled: Boolean, modifier: Modifier) {
-    Column(modifier.verticalScroll(rememberScrollState()).padding(14.dp),
+private fun CtRecordDetails(model: WorkspaceModel, enabled: Boolean, modifier: Modifier, scrollable: Boolean) {
+    Column(modifier.then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("FICHA DEL CT", style = MaterialTheme.typography.titleMedium,
