@@ -57,8 +57,9 @@ jobs:
             adb shell settings put system user_rotation 0
             gradle --no-daemon :app:connectedDebugAndroidTest
             mkdir -p app/build/reports/android-screenshots
-            adb exec-out run-as com.josxtm.autocontrol.community cat files/screenshots/tablet-sniffer.png > app/build/reports/android-screenshots/tablet-sniffer.png
-            test -s app/build/reports/android-screenshots/tablet-sniffer.png
+            adb pull /sdcard/Download/autocontrol-tablet-sniffer.png app/build/reports/android-screenshots/tablet-sniffer.png
+            python3 -c 'from pathlib import Path; p=Path("app/build/reports/android-screenshots/tablet-sniffer.png"); assert p.stat().st_size > 10000 and p.read_bytes()[:8] == bytes([137,80,78,71,13,10,26,10]), "Invalid emulator PNG"'
+
       - name: Name APK with tablet version and compilation
         shell: bash
         run: |
