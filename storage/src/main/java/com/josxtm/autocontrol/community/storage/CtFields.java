@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Explicit aliases only: original keys/values remain in the stored payload. */
 public final class CtFields {
-    private static final Set<String> IDS=new HashSet<>(Arrays.asList("MATRÍCULA","MATRICULA","MATRICULA [BDI]","CÓDIGO BDI","CODIGO BDI"));
+    private static final Set<String> IDS=new HashSet<>(Arrays.asList("MATRÍCULA","MATRICULA","MATRICULA [BDI]"));
     private static final Set<String> NAMES=new HashSet<>(Arrays.asList("NOMBRE","NOMBRE [BDI]"));
     private static final Set<String> LANS=new HashSet<>(Arrays.asList("IP LAN","IP_LAN","IP LAN [EDIT]"));
     public static String normalize(String text){StringBuilder b=new StringBuilder();for(char c:Objects.toString(text,"").toCharArray())if(!Character.isWhitespace(c)&&!Character.isSpaceChar(c))b.append(c>='a'&&c<='z'?(char)(c-32):c);return b.toString();}
