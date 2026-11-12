@@ -49,7 +49,7 @@ private data class Event(val time:String,val type:String,val description:String)
         epoch++;scanJob?.cancel();scanning=false;results=emptyMap();absent.clear();base=selectedLan.orEmpty();
         approval?.second?.complete(false);approval=null
         if(connected||connecting){withContext(Dispatchers.IO){transport.disconnect()};connected=false;shell=false;status="CT cambiado: sesión cerrada"}
-        host=ipAt(base,14)?:profile.getString("host","").orEmpty();fingerprint=""
+        host=profile.getString("host","").orEmpty();fingerprint=""
         log("CT",if(selectedCt==null)"Sin CT seleccionado"else"CT seleccionado; resultados anteriores retirados")
     }
     fun connect(){
