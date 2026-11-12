@@ -126,11 +126,11 @@ private data class Event(val time:String,val type:String,val description:String)
         Text("Servicios: lista de procesos. Las herramientas ausentes muestran su salida de error. Acciones de lectura.",fontSize=10.sp)
     }}}
     Column(modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(5.dp)){
-        Row(Modifier.fillMaxWidth().heightIn(min=55.dp).background(MaterialTheme.colorScheme.surfaceVariant).padding(5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            OutlinedTextField(query,onQuery,Modifier.weight(1f),label={Text("Matrícula CT",fontSize=11.sp)},singleLine=true,enabled=!connecting)
+        Row(Modifier.fillMaxWidth().heightIn(min=45.dp).background(MaterialTheme.colorScheme.surfaceVariant).padding(5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            OutlinedTextField(query,onQuery,Modifier.weight(1f).height(48.dp),label={Text("Matrícula CT",fontSize=11.sp)},singleLine=true,enabled=!connecting)
             IndustrialButton("Buscar","search",!connecting){onSelect()}
             Column(Modifier.weight(1f)){Text(selectedCt?:"Sin CT",fontSize=12.sp);Text(selectedName?:"Nombre pendiente",fontSize=11.sp,maxLines=1)}
-            OutlinedTextField(base,{epoch++;scanJob?.cancel();scanning=false;base=it;results=emptyMap()},Modifier.weight(1f),label={Text("IP LAN",fontSize=11.sp)},singleLine=true)
+            OutlinedTextField(base,{epoch++;scanJob?.cancel();scanning=false;base=it;results=emptyMap()},Modifier.weight(1f).height(48.dp),label={Text("IP LAN",fontSize=11.sp)},singleLine=true)
             var selectHost by remember{mutableStateOf(false)}
             Box{IndustrialButton("SSH: ${targets.firstOrNull{ipAt(base,it.second)==host}?.first?:"Seleccionar"}","network",!connected&&!connecting){selectHost=true};DropdownMenu(selectHost,{selectHost=false}){targets.forEach{(name,offset)->DropdownMenuItem(text={Text("$name · ${ipAt(base,offset)?:"Sin IP"}")},onClick={ipAt(base,offset)?.let{host=it};selectHost=false})}}}
             Text(networkStatus,fontSize=11.sp)
@@ -145,17 +145,36 @@ private data class Event(val time:String,val type:String,val description:String)
                 if(tab!=3)ScanPane(Modifier.fillMaxWidth().height(410.dp));TerminalPane(Modifier.fillMaxWidth().height(500.dp));QuickPane(Modifier.fillMaxWidth())
             }
         }
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            IndustrialPanel("Conexión SSH · ${if(connected)"Conectado"else if(connecting)"Conectando"else"Desconectado"}","lock",Modifier.weight(1.2f)){Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){IndustrialButton("Conectar","play",!connected&&!connecting){connectionDialog=true};IndustrialButton("Desconectar","cancel",connected){disconnect()}}}
-            IndustrialPanel("Huella SSH (SHA256)","lock",Modifier.weight(1f)){Text(if(connected)fingerprint.ifBlank{"Verificada por el transporte"}else"Sin conexión verificada",Modifier.padding(4.dp),fontSize=10.sp,maxLines=2)}
-            IndustrialPanel("Acceso administrador","lock",Modifier.weight(.8f)){IndustrialButton(if(shell)"Autorizado"else"Confirmar acceso",enabled=connected&&!shell){adminDialog=true}}
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){
+            @Composable fun StatusStrip(label:String,mod:Modifier,actions:@Composable RowScope.()->Unit){
+                Surface(mod.height(58.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(5.dp),
+                    color=MaterialTheme.colorScheme.surfaceVariant,
+                    border=BorderStroke(1.dp,Color(0xFF92979B))){
+                    Row(Modifier.fillMaxSize().padding(horizontal=6.dp),
+                        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
+                        TechIcon("lock",Modifier.size(18.dp))
+                        Text(label,Modifier.weight(1f),fontSize=11.sp,maxLines=2)
+                        actions()
+                    }
+                }
+            }
+            StatusStrip("SSH · ${if(connected)"Conectado"else if(connecting)"Conectando"else"Desconectado"}",Modifier.weight(1.2f)){
+                IndustrialButton("Conectar","play",!connected&&!connecting){connectionDialog=true}
+                IndustrialButton("Desconectar","cancel",connected){disconnect()}
+            }
+            StatusStrip("Huella SSH (SHA256)",Modifier.weight(1f)){
+                Text(if(connected)fingerprint.ifBlank{"Verificada"}else"Sin verificar",
+                    fontSize=9.sp,maxLines=2,modifier=Modifier.weight(1f))
+            }
+            StatusStrip("Acceso administrador",Modifier.weight(.8f)){
+                IndustrialButton(if(shell)"Autorizado"else"Confirmar",enabled=connected&&!shell){adminDialog=true}
+            }
         }
-        IndustrialPanel("Registro de eventos","document",Modifier.fillMaxWidth().height(138.dp),actions={
+        IndustrialPanel("Registro de eventos","document",Modifier.fillMaxWidth().height(116.dp),actions={
             TextButton(onClick={eventFilter=if(eventFilter=="Todos")"Error"else"Todos"}){Text("Filtro: $eventFilter",color=Color.White,fontSize=11.sp)}
             IconButton(onClick={events.clear()},modifier=Modifier.size(30.dp)){TechIcon("clear",color=Color.White,description="Limpiar eventos")}
             TextButton(onClick={exporter.launch("AutoControL-eventos.txt")}){Text("Exportar",color=Color.White,fontSize=11.sp)}
         }){Column(Modifier.verticalScroll(rememberScrollState())){events.filter{eventFilter=="Todos"||it.type==eventFilter}.forEach{e->Row(Modifier.fillMaxWidth().padding(2.dp)){Text(e.time,Modifier.width(70.dp),fontSize=11.sp);TechIcon(if(e.type=="Error")"cancel"else"status",Modifier.size(15.dp));Text("${e.type} · ${e.description}",Modifier.padding(start=8.dp),fontSize=11.sp)}}}}
-        Text(status,fontSize=10.sp)
     }
     if(connectionDialog)AlertDialog(onDismissRequest={connectionDialog=false;password=""},title={Text("Conexión MangoSSH")},text={Column{OutlinedTextField(host,{host=it},label={Text("Host SSH")});OutlinedTextField(port,{port=it},label={Text("Puerto")});OutlinedTextField(user,{user=it},label={Text("Usuario")});OutlinedTextField(password,{password=it},label={Text("Contraseña temporal")},visualTransformation=PasswordVisualTransformation())}},confirmButton={TextButton(onClick={connect()}){Text("Conectar")}},dismissButton={TextButton(onClick={connectionDialog=false;password=""}){Text("Cancelar")}})
     approval?.let{(prompt,response)->AlertDialog(onDismissRequest={response.complete(false);approval=null},title={Text("Identidad SSH")},text={Text(prompt)},confirmButton={TextButton(onClick={response.complete(true);approval=null}){Text("Huella verificada")}},dismissButton={TextButton(onClick={response.complete(false);approval=null}){Text("Rechazar")}})}
