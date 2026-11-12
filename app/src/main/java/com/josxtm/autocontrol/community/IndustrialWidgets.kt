@@ -44,8 +44,8 @@ import androidx.compose.ui.semantics.semantics
     }}
 }
 @Composable fun IndustrialButton(label:String,icon:String="",enabled:Boolean=true,primary:Boolean=false,onClick:()->Unit){
-    Surface(onClick=onClick,enabled=enabled,shape=RoundedCornerShape(4.dp),border=BorderStroke(1.dp,Color(0xFF969B9F)),modifier=Modifier.heightIn(min=36.dp),color=if(primary)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface){
-        Row(Modifier.background(Brush.verticalGradient(if(primary)listOf(Color(0xFFC63640),Color(0xFF960E1B))else listOf(MaterialTheme.colorScheme.surface,MaterialTheme.colorScheme.surfaceVariant))).padding(horizontal=9.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
+    Surface(onClick=onClick,enabled=enabled,shape=RoundedCornerShape(4.dp),border=BorderStroke(1.dp,Color(0xFF969B9F)),modifier=Modifier.heightIn(min=30.dp),color=if(primary)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface){
+        Row(Modifier.background(Brush.verticalGradient(if(primary)listOf(Color(0xFFC63640),Color(0xFF960E1B))else listOf(MaterialTheme.colorScheme.surface,MaterialTheme.colorScheme.surfaceVariant))).padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
             val color=if(primary)Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .45f)
             if(icon.isNotEmpty())TechIcon(icon,Modifier.size(19.dp),color);Text(label,fontSize=12.sp,color=color,maxLines=1)
         }
