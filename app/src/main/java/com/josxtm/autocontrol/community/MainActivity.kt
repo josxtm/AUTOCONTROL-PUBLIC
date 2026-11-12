@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -65,12 +66,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun Editor(label: String, value: String, limit: Int, enabled: Boolean, single: Boolean = false, change: (String) -> Unit) {
     OutlinedTextField(value, { if (it.length <= limit) change(it) }, label = { Text(label) }, enabled = enabled,
-        modifier = Modifier.fillMaxWidth(), singleLine = single, minLines = if (single) 1 else 3,
+        modifier = Modifier.fillMaxWidth().testTag("editor-" + label), singleLine = single, minLines = if (single) 1 else 3,
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
 }
 
 @Composable private fun Action(text: String, enabled: Boolean, action: () -> Unit) {
-    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text(text) }
+    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("action-" + text)) { Text(text) }
 }
 
 @Composable private fun Workspace(m: WorkspaceModel, pickCatalog: () -> Unit, pickDocument: () -> Unit,
