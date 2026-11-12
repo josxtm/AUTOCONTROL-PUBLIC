@@ -37,7 +37,7 @@ class CatalogSnifferTest {
         ui.onNodeWithText("Escaneo",substring=false).performClick()
         // Real Surface screenshot from instrumentation, not a vector mockup. Synthetic CT only.
         val screenshot=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        val directory=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()}
+        val directory=File(context.filesDir,"screenshots").apply{mkdirs()}
         File(directory,"tablet-sniffer.png").outputStream().use{screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
         screenshot.recycle()
     }
