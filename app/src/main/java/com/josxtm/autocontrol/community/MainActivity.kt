@@ -30,7 +30,7 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val model: WorkspaceModel by viewModels()
-    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importCatalog) }
+    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri == null) model.catalogSelectionCancelled() else model.importCatalog(uri) }
     private val document = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importDocument) }
     private val ocrModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importModel) }
     private val image = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::recognize) }
@@ -155,6 +155,16 @@ class MainActivity : ComponentActivity() {
                 Column(Modifier.weight(1f).fillMaxHeight().padding(9.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    // Visible on every module, including SNIFFER, even when its workspace is not scrollable.
+                    if (m.message != "Preparado. Solo almacenamiento local." &&
+                        m.message.isNotBlank()) {
+                        Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(6.dp)) {
+                            Text(m.message, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                     if (tab == 4) {
                         // SSH remains alive inside its own pane; unchanged transport.
                         SnifferPanel(Modifier.weight(1f).fillMaxWidth(),
