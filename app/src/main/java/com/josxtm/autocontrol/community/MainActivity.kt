@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -30,7 +31,7 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val model: WorkspaceModel by viewModels()
-    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importCatalog) }
+    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri == null) model.catalogSelectionCancelled() else model.importCatalog(uri) }
     private val document = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importDocument) }
     private val ocrModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importModel) }
     private val image = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::recognize) }
@@ -65,12 +66,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun Editor(label: String, value: String, limit: Int, enabled: Boolean, single: Boolean = false, change: (String) -> Unit) {
     OutlinedTextField(value, { if (it.length <= limit) change(it) }, label = { Text(label) }, enabled = enabled,
-        modifier = Modifier.fillMaxWidth(), singleLine = single, minLines = if (single) 1 else 3,
+        modifier = Modifier.fillMaxWidth().testTag("editor-" + label), singleLine = single, minLines = if (single) 1 else 3,
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
 }
 
 @Composable private fun Action(text: String, enabled: Boolean, action: () -> Unit) {
-    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text(text) }
+    Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth().testTag("action-" + text)) { Text(text) }
 }
 
 @Composable private fun Workspace(m: WorkspaceModel, pickCatalog: () -> Unit, pickDocument: () -> Unit,
@@ -155,19 +156,55 @@ class MainActivity : ComponentActivity() {
                 Column(Modifier.weight(1f).fillMaxHeight().padding(9.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    // Visible on every module, including SNIFFER, even when its workspace is not scrollable.
+                    if (m.message != "Preparado. Solo almacenamiento local." &&
+                        m.message.isNotBlank()) {
+                        Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(6.dp)) {
+                            Text(m.message, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                     if (tab == 4) {
                         // SSH remains alive inside its own pane; unchanged transport.
                         SnifferPanel(Modifier.weight(1f).fillMaxWidth(),
                             selectedCt = m.activeId, selectedLan = m.selectedCtLan,selectedName=m.selectedCtName,query=m.query,onQuery={m.query=it},onSelect=m::search)
-                    } else if(tab==7){
-                        IndustrialPanel("Herramientas locales","home",Modifier.fillMaxWidth()){
-                            nav.filter{it.third!=7}.forEach{item->IndustrialButton(item.second,item.first){tab=item.third}}
-                            Text(m.message,Modifier.padding(12.dp))
-                        }
-                    } else if(tab==6){
-                        IndustrialPanel("PES / BDI","document",Modifier.fillMaxWidth()){
-                            Text("Esta edición pública conserva la biblioteca de documentos. No contiene un motor BDI oficial ni procedimientos PES verificados.",Modifier.padding(16.dp))
-                            IndustrialButton("Abrir documentos","document"){tab=2}
+                    } else if(tab==7 || tab==6) {
+                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                            val showTools = maxWidth >= 750.dp
+                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                IndustrialPanel(
+                                    if (tab == 7) "HERRAMIENTAS LOCALES" else "PES / BDI",
+                                    if (tab == 7) "home" else "document",
+                                    Modifier.weight(1f).fillMaxHeight()
+                                ) {
+                                    if (tab == 7) {
+                                        nav.filter { it.third != 7 }.forEach { item ->
+                                            IndustrialButton(item.second, item.first) { tab = item.third }
+                                        }
+                                        Text(m.message, Modifier.padding(12.dp))
+                                    } else {
+                                        Text("Los documentos y procedimientos PES disponibles son los que el técnico haya importado. Esta edición aún no dispone de motor BDI oficial.",
+                                            Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                                        IndustrialButton("Abrir documentos", "document") { tab = 2 }
+                                    }
+                                }
+                                if (showTools) {
+                                    IndustrialModuleTools(
+                                        tab = tab, model = m, enabled = enabled,
+                                        importDocument = pickDocument,
+                                        exportDocument = exportDocument,
+                                        importOcrModel = pickModel,
+                                        recognizeImage = pickImage,
+                                        deleteDocument = { confirm = "delete" },
+                                        backup = { if (m.preparePassphrase(passphrase)) { passphrase = ""; createBackup() } },
+                                        restore = { if (m.preparePassphrase(passphrase)) { passphrase = ""; confirm = "restore" } },
+                                        openDocuments = { tab = 2 },
+                                        modifier = Modifier.width(255.dp).fillMaxHeight()
+                                    )
+                                }
+                            }
                         }
                     } else if (tab == 0) {
                         IndustrialCtPanel(
@@ -175,6 +212,7 @@ class MainActivity : ComponentActivity() {
                             enabled = enabled,
                             importCatalog = { confirm = "catalog" },
                             chooseFields = { selected = m.visible; fieldsDialog = true },
+                            openSniffer = { tab = 4 },
                             modifier = Modifier.weight(1f).fillMaxWidth()
                         )
                     } else {
@@ -182,7 +220,10 @@ class MainActivity : ComponentActivity() {
                             shape = RoundedCornerShape(11.dp),
                             color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BoxWithConstraints(Modifier.fillMaxSize()) {
+                                val wideTools = maxWidth >= 750.dp
+                                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
                 item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
@@ -255,6 +296,22 @@ class MainActivity : ComponentActivity() {
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }
+            if (wideTools) {
+                IndustrialModuleTools(
+                    tab = tab, model = m, enabled = enabled,
+                    importDocument = pickDocument,
+                    exportDocument = exportDocument,
+                    importOcrModel = pickModel,
+                    recognizeImage = pickImage,
+                    deleteDocument = { confirm = "delete" },
+                    backup = { if (m.preparePassphrase(passphrase)) { passphrase = ""; createBackup() } },
+                    restore = { if (m.preparePassphrase(passphrase)) { passphrase = ""; confirm = "restore" } },
+                    openDocuments = { tab = 2 },
+                    modifier = Modifier.width(255.dp).fillMaxHeight()
+                )
+            }
+                                }
+                            }
                         }
                     }
                 }

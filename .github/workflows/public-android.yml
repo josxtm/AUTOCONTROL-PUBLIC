@@ -32,7 +32,10 @@ jobs:
       - name: Unit tests, Android Lint and isolated public preview
         run: gradle --no-daemon :storage:testDebugUnitTest :documents:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Verify APK identity, version, signature, permissions and resources
-        run: python3 tools/inspect_apk.py app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME/build-tools/35.0.0" | tee app/build/apk-verification.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/inspect_apk.py app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME/build-tools/35.0.0" | tee app/build/apk-verification.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -58,6 +61,7 @@ jobs:
             gradle --no-daemon :app:connectedDebugAndroidTest
             mkdir -p app/build/reports/android-screenshots
             adb pull /sdcard/Download/autocontrol-tablet-sniffer.png app/build/reports/android-screenshots/tablet-sniffer.png
+            for module in inicio centros sniffer-v2 pes-bdi documentos diario copias configuracion; do adb pull "/sdcard/Download/autocontrol-layout-$module.png" "app/build/reports/android-screenshots/$module.png"; done
             python3 -c 'from pathlib import Path; p=Path("app/build/reports/android-screenshots/tablet-sniffer.png"); assert p.stat().st_size > 10000 and p.read_bytes()[:8] == bytes([137,80,78,71,13,10,26,10]), "Invalid emulator PNG"'
 
       - name: Name APK with tablet version and compilation
