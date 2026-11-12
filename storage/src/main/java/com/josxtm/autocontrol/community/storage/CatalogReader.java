@@ -10,7 +10,11 @@ final class CatalogReader {
     static final class Report {int accepted,rejected;String identifier;}
     static Report read(Reader input,String requested,Sink sink)throws IOException{
         Report report=new Report();
-        try(JsonReader r=JsonCodec.reader(input)){
+        // Accept a UTF-8 BOM emitted by common spreadsheet/JSON export tools.
+        PushbackReader cleaned=new PushbackReader(input,1);
+        int first=cleaned.read();
+        if(first!=-1 && first!='\uFEFF')cleaned.unread(first);
+        try(JsonReader r=JsonCodec.reader(cleaned)){
             if(r.peek()==JsonToken.BEGIN_ARRAY){
                 r.beginArray();while(r.hasNext()){
                     LinkedHashMap<String,String> row=JsonCodec.record(r);
