@@ -92,12 +92,12 @@ private data class Event(val time:String,val type:String,val description:String)
         Row(Modifier.padding(6.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){IndustrialButton("Iniciar escaneo","play",!scanning&&ipAt(base,14)!=null&&(tab!=1||connected),true){scan(tab==1)};IndustrialButton("Cancelar","cancel",scanning){scanJob?.cancel()}}
         Text("${results.size}/${targets.size} equipos comprobados",Modifier.padding(6.dp),fontSize=12.sp)
         LinearProgressIndicator(progress={results.size/7f},modifier=Modifier.fillMaxWidth().padding(horizontal=6.dp),color=green)
-        Row(Modifier.padding(6.dp)){Text("Equipo",Modifier.weight(1f),fontSize=12.sp);Text("IP",Modifier.weight(1.4f),fontSize=12.sp);Text("ms / estado",Modifier.weight(1f),fontSize=12.sp)}
+        Row(Modifier.padding(6.dp)){Text("Equipo",Modifier.weight(1.1f),fontSize=11.sp);Text("IP",Modifier.weight(1.55f),fontSize=11.sp);Text("ms / estado",Modifier.weight(1.1f),fontSize=11.sp)}
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())){targets.forEach{(name,offset)->
             HorizontalDivider();val r=results[name];val state=if(absent[name]==true)"No instalado"else r?.state?:"Pendiente"
             Row(Modifier.fillMaxWidth().heightIn(min=38.dp).padding(horizontal=5.dp),verticalAlignment=Alignment.CenterVertically){
-                Text(name,Modifier.weight(1f),fontSize=12.sp);Text(ipAt(base,offset)?:"LAN +$offset",Modifier.weight(1.4f),fontSize=11.sp)
-                Column(Modifier.weight(1f)){Text(r?.millis?.let{"$it ms"}?:"—",fontSize=11.sp);Text(state,fontSize=10.sp,color=if(state=="Responde")green else if(state=="Sin respuesta"||state=="Error")red else MaterialTheme.colorScheme.onSurfaceVariant)}
+                Text(name,Modifier.weight(1.1f),fontSize=11.sp,softWrap=true);Text(ipAt(base,offset)?:"LAN +$offset",Modifier.weight(1.55f),fontSize=11.sp,softWrap=true)
+                Column(Modifier.weight(1.1f)){Text(r?.millis?.let{"$it ms"}?:"—",fontSize=11.sp);Text(state,fontSize=10.sp,color=if(state=="Responde")green else if(state=="Sin respuesta"||state=="Error")red else MaterialTheme.colorScheme.onSurfaceVariant)}
                 if(tab==2)Checkbox(absent[name]==true,{absent[name]=it;results=results-name},enabled=!scanning)
             }
         }}
@@ -126,14 +126,36 @@ private data class Event(val time:String,val type:String,val description:String)
         Text("Servicios: lista de procesos. Las herramientas ausentes muestran su salida de error. Acciones de lectura.",fontSize=10.sp)
     }}}
     Column(modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(5.dp)){
-        Row(Modifier.fillMaxWidth().heightIn(min=45.dp).background(MaterialTheme.colorScheme.surfaceVariant).padding(5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            OutlinedTextField(query,onQuery,Modifier.weight(1f).height(48.dp),label={Text("Matrícula CT",fontSize=11.sp)},singleLine=true,enabled=!connecting)
-            IndustrialButton("Buscar","search",!connecting){onSelect()}
-            Column(Modifier.weight(1f)){Text(selectedCt?:"Sin CT",fontSize=12.sp);Text(selectedName?:"Nombre pendiente",fontSize=11.sp,maxLines=1)}
-            OutlinedTextField(base,{epoch++;scanJob?.cancel();scanning=false;base=it;results=emptyMap()},Modifier.weight(1f).height(48.dp),label={Text("IP LAN",fontSize=11.sp)},singleLine=true)
-            var selectHost by remember{mutableStateOf(false)}
-            Box{IndustrialButton("SSH: ${targets.firstOrNull{ipAt(base,it.second)==host}?.first?:"Seleccionar"}","network",!connected&&!connecting){selectHost=true};DropdownMenu(selectHost,{selectHost=false}){targets.forEach{(name,offset)->DropdownMenuItem(text={Text("$name · ${ipAt(base,offset)?:"Sin IP"}")},onClick={ipAt(base,offset)?.let{host=it};selectHost=false})}}}
-            Text(networkStatus,fontSize=11.sp)
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(5.dp),
+            verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
+                horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(query,onQuery,Modifier.weight(1.2f).heightIn(min=48.dp),
+                    label={Text("Matrícula CT",fontSize=11.sp)},singleLine=true,enabled=!connecting)
+                IndustrialButton("Buscar","search",!connecting){onSelect()}
+                Column(Modifier.weight(1.5f)) {
+                    Text(selectedCt?:"Sin CT",fontSize=12.sp,softWrap=true)
+                    Text(selectedName?:"Nombre pendiente",fontSize=11.sp,softWrap=true)
+                }
+                OutlinedTextField(base,{epoch++;scanJob?.cancel();scanning=false;base=it;results=emptyMap()},
+                    Modifier.weight(1.2f).heightIn(min=48.dp),label={Text("IP LAN",fontSize=11.sp)},
+                    singleLine=true)
+            }
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
+                horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                var selectHost by remember{mutableStateOf(false)}
+                Box {
+                    IndustrialButton("Equipo SSH: " + (targets.firstOrNull { ipAt(base,it.second)==host }?.first ?: "Seleccionar"),
+                        "network",!connected&&!connecting){selectHost=true}
+                    DropdownMenu(selectHost,{selectHost=false}) {
+                        targets.forEach { (name,offset) ->
+                            DropdownMenuItem(text={Text(name + " · " + (ipAt(base,offset)?:"Sin IP"))},
+                                onClick={ipAt(base,offset)?.let{host=it};selectHost=false})
+                        }
+                    }
+                }
+                Text(networkStatus,fontSize=11.sp,softWrap=true)
+            }
         }
         Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){listOf("Escaneo","Pings","Equipos","MangoSSH").forEachIndexed{i,label->IndustrialButton(label,if(i==3)"terminal"else"network",primary=tab==i){tab=i}}}
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()){
@@ -147,13 +169,13 @@ private data class Event(val time:String,val type:String,val description:String)
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)){
             @Composable fun StatusStrip(label:String,mod:Modifier,actions:@Composable RowScope.()->Unit){
-                Surface(mod.height(58.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(5.dp),
+                Surface(mod.heightIn(min=70.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(5.dp),
                     color=MaterialTheme.colorScheme.surfaceVariant,
                     border=BorderStroke(1.dp,Color(0xFF92979B))){
                     Row(Modifier.fillMaxSize().padding(horizontal=6.dp),
                         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
                         TechIcon("lock",Modifier.size(18.dp))
-                        Text(label,Modifier.weight(1f),fontSize=11.sp,maxLines=2)
+                        Text(label,Modifier.weight(1f),fontSize=10.sp,softWrap=true)
                         actions()
                     }
                 }
@@ -164,7 +186,7 @@ private data class Event(val time:String,val type:String,val description:String)
             }
             StatusStrip("Huella SSH (SHA256)",Modifier.weight(1f)){
                 Text(if(connected)fingerprint.ifBlank{"Verificada"}else"Sin verificar",
-                    fontSize=9.sp,maxLines=2,modifier=Modifier.weight(1f))
+                    fontSize=9.sp,softWrap=true,modifier=Modifier.weight(1f))
             }
             StatusStrip("Acceso administrador",Modifier.weight(.8f)){
                 IndustrialButton(if(shell)"Autorizado"else"Confirmar",enabled=connected&&!shell){adminDialog=true}
