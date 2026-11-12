@@ -15,7 +15,12 @@ import java.util.Map;
 final class JsonCodec {
     static final int MAX_FIELDS = 512;
     static final int MAX_TEXT = 16000;
-    static JsonReader reader(Reader source) {
+    static JsonReader reader(Reader source) { return reader(source, 64L * 1024 * 1024); }
+    /**
+     * Large CT catalogs are streamed and require a larger aggregate byte budget.
+     * This does not change the per-string, per-record or record-count limits.
+     */
+    static JsonReader reader(Reader source, long maxChars) {
         return new JsonReader(new FilterReader(source) {
             private long total;
             private int run;
@@ -24,7 +29,7 @@ final class JsonCodec {
                 int count = super.read(buffer, offset, length);
                 for (int i = offset; i < offset + Math.max(count, 0); i++) {
                     char c = buffer[i];
-                    if (++total > 64L * 1024 * 1024) throw invalid();
+                    if (++total > maxChars) throw invalid();
                     if (quoted) {
                         if (++run > 65536) throw invalid();
                         if (escaped) escaped = false;

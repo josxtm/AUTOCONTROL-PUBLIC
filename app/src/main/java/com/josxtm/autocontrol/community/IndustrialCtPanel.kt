@@ -54,6 +54,14 @@ private fun CtSearchTools(
         Text("Catálogo privado · solo almacenamiento local", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         HorizontalDivider()
+        Text("ESTADO DE IMPORTACIÓN", style = MaterialTheme.typography.labelMedium)
+        Surface(color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
+            Text(model.importReport.ifBlank { model.message },
+                modifier = Modifier.padding(10.dp),
+                style = MaterialTheme.typography.bodySmall)
+        }
+        if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         OutlinedTextField(model.identifier, { model.identifier = it.take(128) },
             modifier = Modifier.fillMaxWidth(), label = { Text("Campo identificador") },
             singleLine = true, enabled = enabled)

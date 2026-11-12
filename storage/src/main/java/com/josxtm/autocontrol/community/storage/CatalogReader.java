@@ -14,7 +14,7 @@ final class CatalogReader {
         PushbackReader cleaned=new PushbackReader(input,1);
         int first=cleaned.read();
         if(first!=-1 && first!='\uFEFF')cleaned.unread(first);
-        try(JsonReader r=JsonCodec.reader(cleaned)){
+        try(JsonReader r=JsonCodec.reader(cleaned, 256L * 1024 * 1024)){
             if(r.peek()==JsonToken.BEGIN_ARRAY){
                 r.beginArray();while(r.hasNext()){
                     LinkedHashMap<String,String> row=JsonCodec.record(r);
