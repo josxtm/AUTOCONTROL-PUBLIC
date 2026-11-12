@@ -57,7 +57,8 @@ jobs:
             adb shell settings put system user_rotation 0
             gradle --no-daemon :app:connectedDebugAndroidTest
             mkdir -p app/build/reports/android-screenshots
-            adb pull /sdcard/Android/data/com.josxtm.autocontrol.community/files/screenshots/tablet-sniffer.png app/build/reports/android-screenshots/tablet-sniffer.png
+            adb exec-out run-as com.josxtm.autocontrol.community cat files/screenshots/tablet-sniffer.png > app/build/reports/android-screenshots/tablet-sniffer.png
+            test -s app/build/reports/android-screenshots/tablet-sniffer.png
       - name: Name APK with tablet version and compilation
         shell: bash
         run: |
