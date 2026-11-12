@@ -8,6 +8,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +23,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import java.text.DateFormat
 import java.util.Date
 
@@ -80,20 +84,93 @@ class MainActivity : ComponentActivity() {
     val appContext = LocalContext.current
     val displayName = appContext.applicationInfo.loadLabel(appContext.packageManager).toString()
     val enabled = !m.busy
-    Surface(Modifier.fillMaxSize()) {
-        Row(Modifier.safeDrawingPadding().fillMaxSize()) {
-            Column(Modifier.width(132.dp).fillMaxHeight().padding(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text("AutoControL", style = MaterialTheme.typography.titleMedium)
-                listOf("CT", "Diario", "Documentos", "Copias", "SNIFFER", "Config.").forEachIndexed { index, label ->
-                    if (tab == index) Button(onClick = { tab = index }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(5.dp)) { Text(label, style = MaterialTheme.typography.labelMedium) }
-                    else TextButton(onClick = { tab = index }, modifier = Modifier.fillMaxWidth()) { Text(label, style = MaterialTheme.typography.labelMedium) }
+    val nav = listOf(
+        Triple("▣", "CT", "Ficha y catálogo"),
+        Triple("▤", "Diario", "Intervenciones"),
+        Triple("▥", "Documentos", "Biblioteca"),
+        Triple("▧", "Copias", "Seguridad"),
+        Triple("⌁", "SNIFFER", "Red / MangoSSH"),
+        Triple("⚙", "Config.", "Preferencias")
+    )
+    val charcoal = Color(0xFF303943)
+    val charcoalDeep = Color(0xFF242C34)
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.safeDrawingPadding().fillMaxSize()) {
+            // Persistent compact instrument header, outside scroll containers.
+            Row(Modifier.fillMaxWidth().height(58.dp).background(charcoalDeep)
+                .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("AUTOCONTROL", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Surface(color = accent, shape = RoundedCornerShape(5.dp)) {
+                    Text("TABLET", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall, color = Color.White)
                 }
+                Text(nav[tab].third.uppercase(), color = Color(0xFFCAD3DB),
+                    style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.weight(1f))
+                Text(displayName, style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFDBE1E6))
             }
-            if (tab == 4) {
-                // The active SSH session must not be disposed by LazyColumn virtualization.
-                SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan)
-            } else {
-            LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxSize()) {
+                Column(Modifier.width(162.dp).fillMaxHeight().background(charcoal)
+                    .padding(7.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(" MÓDULOS", Modifier.padding(vertical = 10.dp),
+                        style = MaterialTheme.typography.labelSmall, color = Color(0xFFBAC6CE))
+                    nav.forEachIndexed { index, item ->
+                        val chosen = index == tab
+                        Surface(
+                            onClick = { tab = index },
+                            modifier = Modifier.fillMaxWidth().height(51.dp),
+                            shape = RoundedCornerShape(7.dp),
+                            color = if (chosen) accent else charcoal,
+                            contentColor = Color.White,
+                            border = if (chosen) null else BorderStroke(1.dp, Color(0xFF485560))
+                        ) {
+                            Row(Modifier.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(item.first, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                                Text(item.second, color = Color.White, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    HorizontalDivider(color = Color(0xFF586571))
+                    Text("T4 · GRIS INDUSTRIAL", style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFBEC9D3))
+                    Text("SIN TELEMANDOS", style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFBEC9D3))
+                }
+                Column(Modifier.weight(1f).fillMaxHeight().padding(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(Modifier.fillMaxWidth().height(41.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(nav[tab].second.uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f))
+                        Text(autoThemes[m.tabletTheme].name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (tab == 4) {
+                        // SSH remains alive inside its own pane; unchanged transport.
+                        SnifferPanel(Modifier.weight(1f).fillMaxWidth(),
+                            selectedCt = m.activeId, selectedLan = m.selectedCtLan)
+                    } else if (tab == 0) {
+                        IndustrialCtPanel(
+                            model = m,
+                            enabled = enabled,
+                            importCatalog = { confirm = "catalog" },
+                            chooseFields = { selected = m.visible; fieldsDialog = true },
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        )
+                    } else {
+                        Surface(Modifier.weight(1f).fillMaxWidth(),
+                            shape = RoundedCornerShape(11.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
                 item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
@@ -166,6 +243,9 @@ class MainActivity : ComponentActivity() {
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }
+                        }
+                    }
+                }
             }
         }
     }
