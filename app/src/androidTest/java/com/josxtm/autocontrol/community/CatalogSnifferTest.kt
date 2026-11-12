@@ -35,6 +35,13 @@ class CatalogSnifferTest {
         listOf(1,2,3,9,11,13,14).forEach{ui.onNodeWithText(listOf(192,0,2,it).joinToString(".")).assertExists()}
         ui.onAllNodesWithText("MangoSSH",substring=false)[0].performClick();ui.onNodeWithText("MangoSSH — Terminal").assertExists()
         ui.onNodeWithText("Escaneo",substring=false).performClick()
+        ui.activityRule.scenario.onActivity { activity ->
+            val keyboard = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            keyboard.hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+            activity.currentFocus?.clearFocus()
+        }
+        ui.waitForIdle()
+        Thread.sleep(600)
         // Capture the actual emulated tablet screen to a test-only shared path.
         // The instrumentation process may be removed by Gradle before the CI artifact stage.
         val handle = InstrumentationRegistry.getInstrumentation().uiAutomation
