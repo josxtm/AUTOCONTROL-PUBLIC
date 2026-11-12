@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- AUTOCONTROL_APPROVED_SNIFFER_NETWORK: SSH initiated explicitly by user; no telemetry. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read interface availability for the requested LAN status; no discovery or telemetry. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"

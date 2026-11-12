@@ -75,23 +75,25 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun Workspace(m: WorkspaceModel, pickCatalog: () -> Unit, pickDocument: () -> Unit,
     pickModel: () -> Unit, pickImage: () -> Unit, exportDocument: () -> Unit, createBackup: () -> Unit, restoreBackup: () -> Unit) {
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(7) }
     var confirm by remember { mutableStateOf("") }
     var fieldsDialog by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<List<String>>(emptyList()) }
     var licenses by remember { mutableStateOf(false) }
+    var notifications by remember { mutableStateOf(false) }
+    var options by remember { mutableStateOf(false) }
+    val networkStatus = com.josxtm.autocontrol.community.sniffer.rememberLanStatus()
     var passphrase by remember { mutableStateOf("") }
     val appContext = LocalContext.current
     val displayName = appContext.applicationInfo.loadLabel(appContext.packageManager).toString()
     val enabled = !m.busy
     val nav = listOf(
-        Triple("▣", "CT", "Ficha y catálogo"),
-        Triple("▤", "Diario", "Intervenciones"),
-        Triple("▥", "Documentos", "Biblioteca"),
-        Triple("▧", "Copias", "Seguridad"),
-        Triple("⌁", "SNIFFER", "Red / MangoSSH"),
-        Triple("⚙", "Config.", "Preferencias")
+        Triple("home", "Inicio", 7),Triple("ct", "Centros CT", 0),
+        Triple("network", "SNIFFER LAN", 4),Triple("document", "PES / BDI", 6),
+        Triple("document", "Documentos", 2),Triple("document", "Diario", 1),
+        Triple("database", "Copias", 3),Triple("settings", "Configuración", 5)
     )
+    val current=nav.first{it.third==tab}
     val charcoal = Color(0xFF303943)
     val charcoalDeep = Color(0xFF242C34)
     val accent = MaterialTheme.colorScheme.primary
@@ -101,62 +103,72 @@ class MainActivity : ComponentActivity() {
             Row(Modifier.fillMaxWidth().height(58.dp).background(charcoalDeep)
                 .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("AUTOCONTROL", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                TechIcon("network",Modifier.size(28.dp),Color(0xFFD4313D));Text("AutoControL", color = Color.White, style = MaterialTheme.typography.titleLarge)
                 Surface(color = accent, shape = RoundedCornerShape(5.dp)) {
                     Text("TABLET", Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall, color = Color.White)
                 }
-                Text(nav[tab].third.uppercase(), color = Color(0xFFCAD3DB),
+                Text(if(tab==4)"SNIFFER LAN · Diagnóstico y Terminal (MangoSSH)"else current.second, color = Color(0xFFCAD3DB),
                     style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.weight(1f))
                 Text(displayName, style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFFDBE1E6))
+                Text(networkStatus, style=MaterialTheme.typography.labelSmall,color=Color.White)
+                IconButton(onClick={notifications=true}) { TechIcon("bell",color=Color.White,description="Notificaciones") }
+                Box {
+                    IconButton(onClick={options=true}) { TechIcon("menu",color=Color.White,description="Opciones") }
+                    DropdownMenu(options,{options=false}) {
+                        DropdownMenuItem(text={Text("Configuración")},onClick={options=false;tab=5})
+                        DropdownMenuItem(text={Text("Centros CT")},onClick={options=false;tab=0})
+                    }
+                }
             }
             Row(Modifier.fillMaxSize()) {
-                Column(Modifier.width(162.dp).fillMaxHeight().background(charcoal)
+                Column(Modifier.width(126.dp).fillMaxHeight().background(charcoal)
                     .padding(7.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(" MÓDULOS", Modifier.padding(vertical = 10.dp),
                         style = MaterialTheme.typography.labelSmall, color = Color(0xFFBAC6CE))
                     nav.forEachIndexed { index, item ->
-                        val chosen = index == tab
+                        val chosen = item.third == tab
                         Surface(
-                            onClick = { tab = index },
-                            modifier = Modifier.fillMaxWidth().height(51.dp),
+                            onClick = { tab = item.third },
+                            modifier = Modifier.fillMaxWidth().height(66.dp),
                             shape = RoundedCornerShape(7.dp),
                             color = if (chosen) accent else charcoal,
                             contentColor = Color.White,
                             border = if (chosen) null else BorderStroke(1.dp, Color(0xFF485560))
                         ) {
-                            Row(Modifier.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(item.first, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                            Column(Modifier.padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center) {
+                                TechIcon(item.first,Modifier.size(28.dp),Color.White)
                                 Text(item.second, color = Color.White, style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
                     Spacer(Modifier.weight(1f))
                     HorizontalDivider(color = Color(0xFF586571))
-                    Text("T4 · GRIS INDUSTRIAL", style = MaterialTheme.typography.labelSmall,
+                    Text(autoThemes[m.tabletTheme].name.uppercase(), style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFBEC9D3))
                     Text("SIN TELEMANDOS", style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFBEC9D3))
                 }
                 Column(Modifier.weight(1f).fillMaxHeight().padding(9.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Row(Modifier.fillMaxWidth().height(41.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(nav[tab].second.uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f))
-                        Text(autoThemes[m.tabletTheme].name,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                     if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (tab == 4) {
                         // SSH remains alive inside its own pane; unchanged transport.
                         SnifferPanel(Modifier.weight(1f).fillMaxWidth(),
-                            selectedCt = m.activeId, selectedLan = m.selectedCtLan)
+                            selectedCt = m.activeId, selectedLan = m.selectedCtLan,selectedName=m.selectedCtName,query=m.query,onQuery={m.query=it},onSelect=m::search)
+                    } else if(tab==7){
+                        IndustrialPanel("Herramientas locales","home",Modifier.fillMaxWidth()){
+                            nav.filter{it.third!=7}.forEach{item->IndustrialButton(item.second,item.first){tab=item.third}}
+                            Text(m.message,Modifier.padding(12.dp))
+                        }
+                    } else if(tab==6){
+                        IndustrialPanel("PES / BDI","document",Modifier.fillMaxWidth()){
+                            Text("Esta edición pública conserva la biblioteca de documentos. No contiene un motor BDI oficial ni procedimientos PES verificados.",Modifier.padding(16.dp))
+                            IndustrialButton("Abrir documentos","document"){tab=2}
+                        }
                     } else if (tab == 0) {
                         IndustrialCtPanel(
                             model = m,
@@ -235,7 +247,7 @@ class MainActivity : ComponentActivity() {
                         autoThemes.forEachIndexed { index, theme ->
                             item {
                                 OutlinedButton(onClick = { m.selectTabletTheme(index) }, modifier = Modifier.fillMaxWidth()) {
-                                    Text((if (m.tabletTheme == index) "✓  " else "") + theme.name)
+                                    Text((if (m.tabletTheme == index) "Seleccionado: " else "") + theme.name)
                                 }
                             }
                         }
@@ -249,10 +261,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    if(notifications) AlertDialog(onDismissRequest={notifications=false},title={Text("Estado de operaciones")},text={Text(m.message)},confirmButton={TextButton(onClick={notifications=false}){Text("Cerrar")}})
     if (confirm.isNotEmpty()) AlertDialog(onDismissRequest = { confirm = ""; m.clearPassphrase() },
         title = { Text(if (confirm == "delete") "Eliminar documento" else "Sustituir datos locales") },
         text = { Text(when (confirm) {
-            "catalog" -> "Una importación correcta sustituye el catálogo y elimina sus notas. Conserva diario y documentos. Haz una copia antes. Un error revierte la operación."
+            "catalog" -> "La importación sustituye el catálogo y conserva las notas de centros presentes. Si excluiría centros con notas, se rechaza. Diario y documentos se conservan; un error revierte la transacción."
             "delete" -> "Elimina el adjunto seleccionado de esta edición pública. Exporta una copia antes si deseas conservarlo."
             else -> "La restauración autenticada sustituye catálogo, notas, diario y documentos. Haz una copia antes. Una copia inválida conserva los datos actuales."
         }) },

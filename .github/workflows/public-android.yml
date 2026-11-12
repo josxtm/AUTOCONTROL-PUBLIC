@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AUTOCONTROL_BUILD_NUMBER: ${{ github.run_number }}
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,11 +47,17 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_c
           disable-animations: true
           script: |
             adb push "$RUNNER_TEMP/synthetic-ocr-model.traineddata" /data/local/tmp/synthetic-ocr-model.traineddata
+            adb shell wm size 1920x1200
+            adb shell wm density 240
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 0
             gradle --no-daemon :app:connectedDebugAndroidTest
+            mkdir -p app/build/reports/android-screenshots
+            adb pull /sdcard/Android/data/com.josxtm.autocontrol.community/files/screenshots/tablet-sniffer.png app/build/reports/android-screenshots/tablet-sniffer.png
       - name: Name APK with tablet version and compilation
         shell: bash
         run: |

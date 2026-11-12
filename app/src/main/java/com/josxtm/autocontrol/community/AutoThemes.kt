@@ -20,6 +20,9 @@ val autoThemes = listOf(
 )
 fun autoColorScheme(themeIndex: Int): ColorScheme {
     val t = autoThemes.getOrElse(themeIndex) { autoThemes[3] }
+    if(themeIndex==3) return lightColorScheme(primary=t.accent,background=t.background,surface=t.surface,
+        surfaceVariant=Color(0xFFD7DADD),onSurface=Color(0xFF1F2428),onSurfaceVariant=Color(0xFF41474B),
+        outline=Color(0xFF848B90),outlineVariant=Color(0xFFA8ADB0),onPrimary=Color.White)
     return if (t.dark) darkColorScheme(primary=t.accent, background=t.background, surface=t.surface)
     else lightColorScheme(primary=t.accent, background=t.background, surface=t.surface,
         onPrimary=Color.White)

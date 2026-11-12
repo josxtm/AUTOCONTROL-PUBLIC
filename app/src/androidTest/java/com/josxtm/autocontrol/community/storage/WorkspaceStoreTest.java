@@ -47,15 +47,15 @@ public final class WorkspaceStoreTest extends TestCase {
         catalog(); rejected("[{\"code\":\"SYN-X\"}"); rejected("[{\"code\":\"SYN-X\"}] {}");
         rejected("/*synthetic*/[]"); rejected("[{code:'SYN-X'}]");
     }
-    public void testSuccessfulReplacementRemovesNotesPreservesJournal() throws Exception {
+    public void testReplacementPreservesMatchingNotesAndRejectsExclusion() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note"); store.addJournal("Synthetic diary");
-        store.importCatalog(new StringReader("[{\"code\":\"SYN-NEW\"}]"), "code");
-        assertNull(store.find("SYN-001")); assertEquals("", store.note("SYN-001")); assertEquals(1, store.journal(Long.MAX_VALUE).size());
+        rejected("[{\"code\":\"SYN-NEW\"}]");
+        catalog(); assertNotNull(store.find("SYN-001")); assertEquals("Synthetic note", store.note("SYN-001")); assertEquals(1, store.journal(Long.MAX_VALUE).size());
     }
     public void testBackupRestoreRoundTripAndReopen() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note\nα"); store.addJournal("Synthetic diary");
         store.setting("visible", "{\"label\":\"\"}"); String snapshot = backup();
-        store.importCatalog(new StringReader("[{\"id\":\"SYN-OTHER\"}]"), "id");
+        store.close();getContext().deleteDatabase("synthetic-test.db");store=new WorkspaceStore(getContext(), "synthetic-test.db");
         store.restore(new StringReader(snapshot)); assertEquals(snapshot, backup());
         store.close(); store = new WorkspaceStore(getContext(), "synthetic-test.db");
         assertEquals(snapshot, backup()); assertEquals("Synthetic note\nα", store.note("SYN-001"));
@@ -89,7 +89,7 @@ public final class WorkspaceStoreTest extends TestCase {
         catalog(); rejected("[{\"code\":\"" + "x".repeat(257) + "\"}]");
         rejected("[{\"code\":\"SYN-X\",\"body\":\"" + "x".repeat(70000) + "\"}]");
         StringBuilder fields = new StringBuilder("[{\"code\":\"SYN-X\"");
-        for (int i = 0; i < 101; i++) fields.append(",\"synthetic").append(i).append("\":0");
+        for (int i = 0; i < JsonCodec.MAX_FIELDS + 1; i++) fields.append(",\"synthetic").append(i).append("\":0");
         rejected(fields.append("}]").toString());
     }
     public void testInputFailureRollsBackAndCanContinue() throws Exception {

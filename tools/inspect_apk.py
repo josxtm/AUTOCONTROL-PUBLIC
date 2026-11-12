@@ -23,7 +23,8 @@ def inspect(apk, build_tools):
     manifest = run("aapt", "dump", "xmltree", apk, "AndroidManifest.xml")
     permissions = re.findall(r"uses-permission: name='([^']+)'", badging)
     allowed = {"com.josxtm.autocontrol.community.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"}
-    if set(permissions) not in (allowed, allowed | {"android.permission.INTERNET"}):
+    if set(permissions) not in (allowed, allowed | {"android.permission.INTERNET"},
+                               allowed | {"android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"}):
         raise ValueError("Unexpected permissions")
     if not re.search(r"allowBackup\([^\n]*=\(type 0x12\)0x0", manifest):
         raise ValueError("Automatic backup must be disabled")

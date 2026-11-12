@@ -14,7 +14,7 @@ class ComposeSmokeTest {
     @Test fun launchEditDocumentAndDiary() {
         compose.onNodeWithText("AutoControL_tablet_v.1.0 - comp.", substring = true).assertExists()
         compose.waitUntil(10000) { compose.onAllNodesWithText("Procesando en el dispositivo…").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithText("Documentos", substring = true).performClick()
+        compose.onAllNodesWithText("Documentos", substring = false).first().performClick()
         scroll("Nombre del documento").performTextInput("SYN-UI-Document")
         scroll("Texto editable").performTextInput("Synthetic editable text")
         scroll("Guardar documento").performClick()
