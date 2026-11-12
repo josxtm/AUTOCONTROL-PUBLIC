@@ -169,15 +169,41 @@ class MainActivity : ComponentActivity() {
                         // SSH remains alive inside its own pane; unchanged transport.
                         SnifferPanel(Modifier.weight(1f).fillMaxWidth(),
                             selectedCt = m.activeId, selectedLan = m.selectedCtLan,selectedName=m.selectedCtName,query=m.query,onQuery={m.query=it},onSelect=m::search)
-                    } else if(tab==7){
-                        IndustrialPanel("Herramientas locales","home",Modifier.fillMaxWidth()){
-                            nav.filter{it.third!=7}.forEach{item->IndustrialButton(item.second,item.first){tab=item.third}}
-                            Text(m.message,Modifier.padding(12.dp))
-                        }
-                    } else if(tab==6){
-                        IndustrialPanel("PES / BDI","document",Modifier.fillMaxWidth()){
-                            Text("Esta edición pública conserva la biblioteca de documentos. No contiene un motor BDI oficial ni procedimientos PES verificados.",Modifier.padding(16.dp))
-                            IndustrialButton("Abrir documentos","document"){tab=2}
+                    } else if(tab==7 || tab==6) {
+                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                            val showTools = maxWidth >= 750.dp
+                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                IndustrialPanel(
+                                    if (tab == 7) "HERRAMIENTAS LOCALES" else "PES / BDI",
+                                    if (tab == 7) "home" else "document",
+                                    Modifier.weight(1f).fillMaxHeight()
+                                ) {
+                                    if (tab == 7) {
+                                        nav.filter { it.third != 7 }.forEach { item ->
+                                            IndustrialButton(item.second, item.first) { tab = item.third }
+                                        }
+                                        Text(m.message, Modifier.padding(12.dp))
+                                    } else {
+                                        Text("Los documentos y procedimientos PES disponibles son los que el técnico haya importado. Esta edición aún no dispone de motor BDI oficial.",
+                                            Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+                                        IndustrialButton("Abrir documentos", "document") { tab = 2 }
+                                    }
+                                }
+                                if (showTools) {
+                                    IndustrialModuleTools(
+                                        tab = tab, model = m, enabled = enabled,
+                                        importDocument = pickDocument,
+                                        exportDocument = exportDocument,
+                                        importOcrModel = pickModel,
+                                        recognizeImage = pickImage,
+                                        deleteDocument = { confirm = "delete" },
+                                        backup = { if (m.preparePassphrase(passphrase)) { passphrase = ""; createBackup() } },
+                                        restore = { if (m.preparePassphrase(passphrase)) { passphrase = ""; confirm = "restore" } },
+                                        openDocuments = { tab = 2 },
+                                        modifier = Modifier.width(255.dp).fillMaxHeight()
+                                    )
+                                }
+                            }
                         }
                     } else if (tab == 0) {
                         IndustrialCtPanel(
