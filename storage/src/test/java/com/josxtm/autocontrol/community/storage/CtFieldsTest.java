@@ -20,7 +20,8 @@ public class CtFieldsTest {
     @Test public void aliasesMustAgreeAndUnknownIdentifiersAreNotGuessed() throws Exception {
         Map<String,String> row=new LinkedHashMap<>();row.put("id","28SYN001");assertNull(CtFields.registration(row));
         row.put("MATRICULA","28 syn001");row.put("CÓDIGO BDI","28SYN001");assertEquals("28SYN001",CtFields.registration(row));
-        row.put("CÓDIGO BDI","45SYN002");try{CtFields.registration(row);fail("Ambiguous aliases accepted");}catch(IOException expected){}
+        row.put("CÓDIGO BDI","45SYN002");assertEquals("28SYN001",CtFields.registration(row));
+        row.put("MATRÍCULA","45SYN002");try{CtFields.registration(row);fail("Ambiguous matrícula aliases accepted");}catch(IOException expected){}
     }
     @Test public void officialColumnAliasesAreExplicit() throws Exception {
         Map<String,String> row=new LinkedHashMap<>();row.put("MATRICULA [BDI]","45SYN001");row.put("NOMBRE [BDI]","Synthetic");row.put("IP LAN [EDIT]","original");
