@@ -45,7 +45,7 @@ class CatalogSnifferTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         WorkspaceStore(context,"alias-synthetic.db").use{store->
             val json="[{\"MATRÍCULA\":\"45 syn1\",\"NOMBRE\":\"Synthetic alias\",\"IP_LAN\":\"$base/24\"}]"
-            assertEquals(1,store.importCatalog(StringReader(json),"id"));assertEquals("Synthetic alias",CtFields.name(store.find("45SYN1")))
+            assertEquals(1,store.importCatalog(StringReader("\uFEFF" + json),"id"));assertEquals("Synthetic alias",CtFields.name(store.find("45SYN1")))
             for(bad in listOf("[{\"MATRÍCULA\":\"45SYN1\",\"MATRICULA\":\"45OTHER\"}]","[{\"MATRICULA\":\"45syn1\"},{\"MATRICULA\":\"45 SYN1\"}]","{}")){
                 try{store.importCatalog(StringReader(bad),"id");fail("Expected rejection")}catch(_:Exception){}
                 assertEquals("Synthetic alias",CtFields.name(store.find("45SYN1")))
