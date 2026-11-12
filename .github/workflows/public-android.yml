@@ -58,6 +58,9 @@ jobs:
             gradle --no-daemon :app:connectedDebugAndroidTest
             mkdir -p app/build/reports/android-screenshots
             adb pull /sdcard/Download/autocontrol-tablet-sniffer.png app/build/reports/android-screenshots/tablet-sniffer.png
+            for module in inicio centros sniffer-v2 pes-bdi documentos diario copias configuracion; do
+              adb pull "/sdcard/Download/autocontrol-layout-$module.png" "app/build/reports/android-screenshots/$module.png"
+            done
             python3 -c 'from pathlib import Path; p=Path("app/build/reports/android-screenshots/tablet-sniffer.png"); assert p.stat().st_size > 10000 and p.read_bytes()[:8] == bytes([137,80,78,71,13,10,26,10]), "Invalid emulator PNG"'
 
       - name: Name APK with tablet version and compilation
