@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.safeDrawingPadding().fillMaxSize()) {
             // Persistent compact instrument header, outside scroll containers.
-            Row(Modifier.fillMaxWidth().height(58.dp).background(charcoalDeep)
+            Row(Modifier.fillMaxWidth().height(46.dp).background(charcoalDeep)
                 .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TechIcon("network",Modifier.size(28.dp),Color(0xFFD4313D));Text("AutoControL", color = Color.White, style = MaterialTheme.typography.titleLarge)
