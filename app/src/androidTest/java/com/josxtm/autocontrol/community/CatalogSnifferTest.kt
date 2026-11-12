@@ -35,11 +35,12 @@ class CatalogSnifferTest {
         listOf(1,2,3,9,11,13,14).forEach{ui.onNodeWithText(listOf(192,0,2,it).joinToString(".")).assertExists()}
         ui.onAllNodesWithText("MangoSSH",substring=false)[0].performClick();ui.onNodeWithText("MangoSSH — Terminal").assertExists()
         ui.onNodeWithText("Escaneo",substring=false).performClick()
-        // Real Surface screenshot from instrumentation, not a vector mockup. Synthetic CT only.
-        val screenshot=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        val directory=File(context.filesDir,"screenshots").apply{mkdirs()}
-        File(directory,"tablet-sniffer.png").outputStream().use{screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
-        screenshot.recycle()
+        // Capture the actual emulated tablet screen to a test-only shared path.
+        // The instrumentation process may be removed by Gradle before the CI artifact stage.
+        val handle = InstrumentationRegistry.getInstrumentation().uiAutomation
+            .executeShellCommand("screencap -p /sdcard/Download/autocontrol-tablet-sniffer.png")
+        handle.close()
+
     }
     @Test fun aliasesAmbiguityAndFailuresDoNotReplaceCatalogue(){
         val context=InstrumentationRegistry.getInstrumentation().targetContext
