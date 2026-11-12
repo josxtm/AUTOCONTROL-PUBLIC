@@ -47,6 +47,25 @@ class CatalogSnifferTest {
         val handle = InstrumentationRegistry.getInstrumentation().uiAutomation
             .executeShellCommand("screencap -p /sdcard/Download/autocontrol-tablet-sniffer.png")
         handle.close()
+        // Screenshots of all eight modules on the same synthetic-only emulator.
+        // No production CT data is accessed, and FLAG_SECURE is only cleared during instrumentation.
+        val modules = listOf(
+            "Inicio" to "inicio",
+            "Centros CT" to "centros",
+            "SNIFFER LAN" to "sniffer-v2",
+            "PES / BDI" to "pes-bdi",
+            "Documentos" to "documentos",
+            "Diario" to "diario",
+            "Copias" to "copias",
+            "Configuración" to "configuracion"
+        )
+        for ((label, slug) in modules) {
+            ui.onAllNodesWithText(label, substring = false)[0].performClick()
+            ui.waitForIdle()
+            val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation
+                .executeShellCommand("screencap -p /sdcard/Download/autocontrol-layout-$slug.png")
+            screenshot.close()
+        }
 
     }
     @Test fun aliasesAmbiguityAndFailuresDoNotReplaceCatalogue(){
