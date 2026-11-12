@@ -185,6 +185,7 @@ class MainActivity : ComponentActivity() {
                             enabled = enabled,
                             importCatalog = { confirm = "catalog" },
                             chooseFields = { selected = m.visible; fieldsDialog = true },
+                            openSniffer = { tab = 4 },
                             modifier = Modifier.weight(1f).fillMaxWidth()
                         )
                     } else {
