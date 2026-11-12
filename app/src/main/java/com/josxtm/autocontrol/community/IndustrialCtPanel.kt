@@ -8,7 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.text.style.TextOverflow
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 
 /** Tablet CT workbench: existing local catalog/search/note behavior, no data migration. */
 @Composable
@@ -17,26 +19,28 @@ fun IndustrialCtPanel(
     enabled: Boolean,
     importCatalog: () -> Unit,
     chooseFields: () -> Unit,
+    openSniffer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         if (maxWidth >= 760.dp) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Card(Modifier.weight(.37f).fillMaxHeight(), shape = MaterialTheme.shapes.medium) {
-                    CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxSize(), true)
+                IndustrialPanel("BUSCADOR Y CATÁLOGO CT", "search", Modifier.weight(.37f).fillMaxHeight()) {
+                    CtSearchTools(model, enabled, importCatalog, chooseFields,
+                        Modifier.weight(1f).fillMaxWidth(), true)
                 }
-                Card(Modifier.weight(.63f).fillMaxHeight(), shape = MaterialTheme.shapes.medium) {
-                    CtRecordDetails(model, enabled, Modifier.fillMaxSize(), true)
+                IndustrialPanel("FICHA CT Y HERRAMIENTAS", "ct", Modifier.weight(.63f).fillMaxHeight()) {
+                    CtRecordDetails(model, enabled, Modifier.weight(1f).fillMaxWidth(), true, openSniffer)
                 }
             }
         } else {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Card(Modifier.fillMaxWidth()) {
+                IndustrialPanel("BUSCADOR Y CATÁLOGO CT", "search", Modifier.fillMaxWidth()) {
                     CtSearchTools(model, enabled, importCatalog, chooseFields, Modifier.fillMaxWidth(), false)
                 }
-                Card(Modifier.fillMaxWidth()) {
-                    CtRecordDetails(model, enabled, Modifier.fillMaxWidth(), false)
+                IndustrialPanel("FICHA CT Y HERRAMIENTAS", "ct", Modifier.fillMaxWidth()) {
+                    CtRecordDetails(model, enabled, Modifier.fillMaxWidth(), false, openSniffer)
                 }
             }
         }
@@ -87,7 +91,8 @@ private fun CtSearchTools(
 }
 
 @Composable
-private fun CtRecordDetails(model: WorkspaceModel, enabled: Boolean, modifier: Modifier, scrollable: Boolean) {
+private fun CtRecordDetails(model: WorkspaceModel, enabled: Boolean, modifier: Modifier, scrollable: Boolean, openSniffer: () -> Unit) {
+    val context = LocalContext.current
     Column(modifier.then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -105,13 +110,29 @@ private fun CtRecordDetails(model: WorkspaceModel, enabled: Boolean, modifier: M
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.Top) {
                     Text(field, Modifier.weight(.4f), style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2,
-                        overflow = TextOverflow.Ellipsis)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = true)
                     Text(value ?: "(vacío)", Modifier.weight(.6f),
                         style = MaterialTheme.typography.bodyMedium)
                 }
                 HorizontalDivider()
             }
+            Text("ACCIONES RÁPIDAS", style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IndustrialButton("Abrir SNIFFER", "network", enabled, true) { openSniffer() }
+                val address = listOfNotNull(
+                    model.record.entries.firstOrNull { it.key.equals("CALLE", true) }?.value,
+                    model.record.entries.firstOrNull { it.key.equals("MUNICIPIO", true) }?.value
+                ).filter { it.isNotBlank() }.joinToString(", ")
+                IndustrialButton("Ver en Maps", "network", enabled && address.isNotBlank()) {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(address)))
+                    try { context.startActivity(intent) }
+                    catch (_: android.content.ActivityNotFoundException) { }
+                }
+            }
+            Text("RED LOCAL", style = MaterialTheme.typography.labelMedium)
+            Text(model.selectedCtLan ?: "IP LAN no disponible para este CT",
+                style = MaterialTheme.typography.bodySmall)
+            HorizontalDivider()
             Text("NOTAS DEL CT", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(model.note, { model.note = it.take(16000) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 115.dp),
