@@ -127,6 +127,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         }
     }
 
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     @Composable
     fun ScanControls() {
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -289,7 +290,6 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
 
     // Definitive GUI B: devices (left), diagnostics (center), integrated MangoSSH (right).
     // Retain the tested SSH transport, manual host key approval and scan implementations.
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val green = androidx.compose.ui.graphics.Color(0xFF247746)
     val red = androidx.compose.ui.graphics.Color(0xFFAB343A)
     val goodCount = results.values.count { it.endsWith("· responde") }
