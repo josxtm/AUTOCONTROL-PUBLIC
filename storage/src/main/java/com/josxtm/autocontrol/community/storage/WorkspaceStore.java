@@ -81,6 +81,102 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
             return count;
         } finally { db.endTransaction(); }
     }
+
+    /** A monthly CSV refresh preserves all existing records and their linked notes. */
+    public static final class CsvUpdate {
+        public final int rows, added, changed, unchanged, retained;
+        public final String identifier;
+        CsvUpdate(int rows, int added, int changed, int unchanged, int retained, String identifier) {
+            this.rows = rows; this.added = added; this.changed = changed;
+            this.unchanged = unchanged; this.retained = retained; this.identifier = identifier;
+        }
+    }
+
+    public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply) throws IOException {
+        SQLiteDatabase db = getWritableDatabase();
+        String oldIdentifier = setting("identifier");
+        final int[] stats = new int[3]; // new, modified, unchanged
+        final LinkedHashMap<String, String> canonical = new LinkedHashMap<>();
+        for (String name : fields()) canonical.put(CsvCatalog.normalized(name), name);
+        final Set<String> allFields = new LinkedHashSet<>(fields());
+        final String[] targetField = {null};
+        db.beginTransaction();
+        try {
+            db.execSQL("CREATE TEMP TABLE IF NOT EXISTS csv_refresh_seen (id TEXT PRIMARY KEY NOT NULL)");
+            db.execSQL("DELETE FROM csv_refresh_seen");
+            CsvCatalog.Parsed parsed = CsvCatalog.read(reader, preferredField, (raw, fromField) -> {
+                String id = raw.get(fromField);
+                if (targetField[0] == null) {
+                    String old = oldIdentifier == null ? "" : oldIdentifier;
+                    if (!old.isEmpty() && !CsvCatalog.normalized(old).equals(CsvCatalog.normalized(fromField))) {
+                        try (Cursor c = db.rawQuery("SELECT count(*) FROM records", null)) {
+                            c.moveToFirst();
+                            if (c.getLong(0) != 0)
+                                throw new IOException("El campo identificador cambió. No se ha actualizado el catálogo.");
+                        }
+                    }
+                    targetField[0] = old.isEmpty() ? fromField : old;
+                    canonical.put(CsvCatalog.normalized(fromField), targetField[0]);
+                }
+                ContentValues seen = new ContentValues(); seen.put("id", id);
+                if (db.insertWithOnConflict("csv_refresh_seen", null, seen, SQLiteDatabase.CONFLICT_IGNORE) < 0)
+                    throw new IOException("Matrícula duplicada en el CSV.");
+                LinkedHashMap<String, String> incoming = new LinkedHashMap<>();
+                for (java.util.Map.Entry<String, String> entry : raw.entrySet()) {
+                    String key = canonical.getOrDefault(CsvCatalog.normalized(entry.getKey()), entry.getKey());
+                    incoming.put(key, entry.getValue());
+                }
+                incoming.put(targetField[0], id);
+                String current = null;
+                try (Cursor c = db.rawQuery("SELECT payload FROM records WHERE id=?", new String[]{id})) {
+                    if (c.moveToFirst()) current = c.getString(0);
+                }
+                LinkedHashMap<String, String> merged = current == null
+                    ? new LinkedHashMap<>() : JsonCodec.decode(current);
+                // Retain only user-specific fields absent from the export; replace changed catalog columns.
+                Set<String> columns = new LinkedHashSet<>();
+                for (String key : incoming.keySet()) columns.add(CsvCatalog.normalized(key));
+                merged.keySet().removeIf(key -> columns.contains(CsvCatalog.normalized(key)));
+                merged.putAll(incoming);
+                if (merged.size() > JsonCodec.MAX_FIELDS) throw JsonCodec.invalid();
+                int total = 0;
+                for (java.util.Map.Entry<String,String> value : merged.entrySet()) {
+                    total += value.getKey().length() + (value.getValue() == null ? 0 : value.getValue().length());
+                    if (total > 262144) throw JsonCodec.invalid();
+                }
+                allFields.addAll(merged.keySet());
+                if (allFields.size() > JsonCodec.MAX_FIELDS) throw JsonCodec.invalid();
+                String encoded = JsonCodec.encode(merged);
+                if (current == null) {
+                    ContentValues newRecord = new ContentValues();
+                    newRecord.put("id", id); newRecord.put("payload", encoded);
+                    db.insertOrThrow("records", null, newRecord);
+                    stats[0]++;
+                } else if (current.equals(encoded)) {
+                    stats[2]++;
+                } else {
+                    ContentValues updated = new ContentValues(); updated.put("payload", encoded);
+                    db.update("records", updated, "id=?", new String[]{id});
+                    stats[1]++;
+                }
+            });
+            int retained;
+            try (Cursor c = db.rawQuery(
+                    "SELECT count(*) FROM records WHERE id NOT IN (SELECT id FROM csv_refresh_seen)", null)) {
+                c.moveToFirst(); retained = c.getInt(0);
+            }
+            storeFields(db, allFields);
+            meta(db, "identifier", targetField[0]);
+            // Retain the existing visible-field configuration, which remains a valid subset.
+            CsvUpdate summary = new CsvUpdate(parsed.count, stats[0], stats[1], stats[2], retained, targetField[0]);
+            if (apply) db.setTransactionSuccessful();
+            return summary;
+        } finally {
+            db.endTransaction();
+            db.execSQL("DROP TABLE IF EXISTS csv_refresh_seen");
+        }
+    }
+
     public synchronized List<String> fields() throws IOException {
         String value = setting("fields");
         return value.isEmpty() ? new ArrayList<>() : new ArrayList<>(JsonCodec.decode(value).keySet());
