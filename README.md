@@ -1,15 +1,15 @@
 # AutoControL Público
 
-Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.community`, versión `0.2.0-public`, `versionCode 2`. No sustituye ni accede a las aplicaciones privadas.
+Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.community`, versión visible `1.0-comp.X`, `versionCode 2`. No sustituye ni accede a las aplicaciones privadas.
 
 ## Módulos
 
-- `app`: interfaz **Kotlin y Jetpack Compose**, temas sistema/claro/oscuro, navegación de registros, diario, documentos y copias. Ancho adaptable y contenido desplazable en móvil/tablet.
+- `app`: interfaz **Kotlin y Jetpack Compose**, diez temas persistentes, navegación de registros, diario, documentos y copias. Ancho adaptable y contenido desplazable en móvil/tablet.
 - `storage`: catálogo JSON incremental, índice SQLite por identificador configurable, fichas con selección de campos, notas individuales, diario paginado y documentos privados. Copias portables cifradas y restauración transaccional.
 - `documents`: adjuntos inertes aportados por el usuario y edición de texto UTF-8. No ejecuta macros, scripts ni plantillas. Los demás formatos se conservan para exportar su archivo original; no se ofrece edición de DOCX/PDF ni interpretación de documentos oficiales.
 - `ocr`: Tesseract4Android 4.9.0 estándar, sin modelos incluidos. Importa explícitamente un modelo traineddata compatible y reconoce imágenes seleccionadas por el usuario **sin red**. El texto reconocido se revisa en el editor antes de guardarlo.
 
-No hay permiso de Internet, telemetría, diagnósticos de infraestructura, plantillas, catálogos ni documentos incorporados. El diagnóstico solo indica esquema local, número de documentos y disponibilidad del modelo. Capturas y copias automáticas del sistema están deshabilitadas. El selector y el teclado tienen políticas propias: elige proveedores locales autorizados.
+El permiso `INTERNET` se utiliza para SNIFFER LAN y MangoSSH, iniciados explícitamente por el usuario. No hay telemetría ni conexiones automáticas. No se incorporan plantillas, catálogos ni documentos de centros. El diagnóstico directo y el ping remoto expresan resultados tipados; ausencia de respuesta ICMP no confirma desconexión. La terminal interactiva permite comandos arbitrarios solo después de confirmar el acceso a un equipo autorizado. Los diagnósticos predefinidos están restringidos. Capturas y copias automáticas del sistema están deshabilitadas. El selector y el teclado tienen políticas propias: elige proveedores locales autorizados.
 
 ## Catálogos y trabajo
 
@@ -42,7 +42,7 @@ Con JDK 17 completo, SDK 35 y Gradle 8.9:
 ```sh
 python3 tools/privacy_guard.py .
 python3 -m unittest discover -s tests -v
-gradle :storage:testDebugUnitTest :documents:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+gradle :storage:testDebugUnitTest :documents:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
 python3 tools/inspect_apk.py app/build/outputs/apk/debug/app-debug.apk "$ANDROID_HOME/build-tools/35.0.0"
 gradle :app:connectedDebugAndroidTest
 ```
@@ -50,3 +50,11 @@ gradle :app:connectedDebugAndroidTest
 Las pruebas OCR requieren aportar por separado el modelo de prueba verificado por el workflow en `/data/local/tmp/synthetic-ocr-model.traineddata`; nunca se empaqueta. Todos los registros, documentos e imágenes de prueba se generan sintéticamente. CI ejecuta las pruebas Android en API 35, incluidas recuperación cifrada, integridad, SQLite real, interfaz Compose y OCR sobre una imagen generada. Solo publica la APK si todos los pasos pasan. El artefacto incluye huella del certificado y hash SHA-256 de la APK. Las versiones fijadas de AndroidX tienen avisos Lint de actualización disponibles; no se desactiva ningún control de privacidad ni de análisis.
 
 Las APK debug de CI son **previews públicas con firma efímera**; no actualizan aplicaciones privadas ni garantizan continuidad de firma entre ejecuciones. [SIGNING.md](SIGNING.md) define un futuro canal permanente público independiente. [MIGRATION.md](MIGRATION.md) detalla las limitaciones.
+
+## Estabilización SNIFFER / SSH
+
+Los comandos de diagnóstico tienen un deadline monotónico de 5 segundos por defecto, cancelación que cierra el canal y salida limitada a 64 KiB. Los estados distinguen respuesta, ausencia de respuesta, timeout, error SSH/local, destino inválido, no configurado y cancelación. La sesión se conserva tras un timeout si sigue utilizable. El cierre de un canal bloqueado dispone de un último recurso que aborta el socket.
+
+Host, puerto y usuario se guardan únicamente al pulsar «Guardar perfil». La contraseña no se guarda. Los pines SHA-256 se almacenan localmente por host y puerto, con compatibilidad de los pines anteriores y rechazo de cambios. La UI conserva sus diez temas, iconos y distribución. El ajuste del modo global claro/oscuro mencionado en la auditoría queda pendiente fuera de esta estabilización, para no alterar las paletas aprobadas.
+
+Consulta [SNIFFER](docs/SNIFFER-MANGOSSH-INTEGRATION.md), [seguridad](SECURITY.md) y [trazabilidad de la auditoría](docs/SSH-STABILITY-VALIDATION.md). Las pruebas de integración usan un servidor sintético que escucha exclusivamente en loopback; no validan el firmware Mango ni una red CT.

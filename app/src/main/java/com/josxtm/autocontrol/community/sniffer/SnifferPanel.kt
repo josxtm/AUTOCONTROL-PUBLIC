@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import java.net.InetAddress
+
 
 private val targets = listOf("Router" to 1, "CC T1" to 2, "CC T2" to 3, "SABT T2" to 9, "SABT T1" to 11, "FFAA1" to 13, "Remota" to 14)
 
@@ -54,7 +54,8 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
     var shell by remember { mutableStateOf(false) }
     var askShell by remember { mutableStateOf(false) }
     var approval by remember { mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null) }
-    var results by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var results by remember { mutableStateOf<Map<String, DiagnosticResult>>(emptyMap()) }
+    var scanEpoch by remember { mutableIntStateOf(0) }
     var scanRunning by remember { mutableStateOf(false) }
     var scanJob by remember { mutableStateOf<Job?>(null) }
     var historyVisible by remember { mutableStateOf(false) }
@@ -62,9 +63,10 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
     val history = remember { mutableStateListOf<String>() }
     val notConfigured = remember { mutableStateMapOf<String, Boolean>() }
     DisposableEffect(transport) {
-        onDispose { scanJob?.cancel(); transport.disconnect() }
+        onDispose { approval?.second?.complete(false); password=""; scanJob?.cancel(); transport.disconnect() }
     }
     LaunchedEffect(selectedCt, selectedLan) {
+        scanEpoch++
         scanJob?.cancel()
         scanRunning = false
         results = emptyMap()
@@ -89,18 +91,21 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         status = "Conectando…"
         scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    transport.connect(host.trim(), p, user.trim(), secret) { endpoint, algorithm, fingerprint ->
+                cancellableDiagnostic { token ->
+                    transport.connect(host.trim(), p, user.trim(), secret, { endpoint, algorithm, fingerprint ->
                         runBlocking {
                             val answer = CompletableDeferred<Boolean>()
                             withContext(Dispatchers.Main) {
                                 approval = ("Servidor: $endpoint · $algorithm\nHuella: $fingerprint\nVerifica fuera de banda antes de aceptar.") to answer
                             }
-                            val accepted = withTimeoutOrNull(60000) { answer.await() } ?: false
-                            withContext(Dispatchers.Main) { approval = null }
-                            accepted
+                            val registration=token.onCancel { answer.complete(false) }
+                            try {
+                                val accepted = withTimeoutOrNull(60000) { answer.await() } ?: false
+                                withContext(Dispatchers.Main) { approval = null }
+                                accepted
+                            } finally { registration.close() }
                         }
-                    }
+                    }, token)
                 }
                 status = "SSH conectado · huella verificada"
             } catch (e: Exception) {
@@ -110,7 +115,11 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
     }
     fun diagnostic(cmd: String) {
         scope.launch {
-            try { val result = withContext(Dispatchers.IO) { transport.diagnostic(cmd) }; append("\n> $cmd\n$result\n") }
+            try {
+                val text=StringBuilder()
+                val result=cancellableDiagnostic { token -> transport.diagnostic(cmd,5000,token) { text.append(it) } }
+                append("\n> $cmd\n$text\n[${result.label()}]\n")
+            }
             catch (_: Exception) { status = "Diagnóstico no disponible" }
         }
     }
@@ -124,6 +133,40 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 shell = true
                 status = "Terminal interactiva activa"
             } catch (_: Exception) { status = "No se pudo abrir la terminal" }
+        }
+    }
+
+    fun startScan(source: DiagnosticSource) {
+        val requestedBase=base
+        val excluded=notConfigured.toMap()
+        val generation=++scanEpoch
+        results=emptyMap();scanRunning=true
+        scanJob=scope.launch {
+            try {
+                for((name,offset) in targets) {
+                    ensureActive()
+                    val address=ipAt(requestedBase,offset)
+                    val result=when {
+                        excluded[name]==true -> DiagnosticResult(name,address,source,DiagnosticStatus.NOT_CONFIGURED,0,null)
+                        address==null -> DiagnosticResult(name,null,source,DiagnosticStatus.INVALID_TARGET,0,null)
+                        source==DiagnosticSource.DIRECT_ANDROID -> cancellableDiagnostic { LocalDiagnostic.check(name,address,it) }
+                        else -> cancellableDiagnostic { token ->
+                            transport.diagnostic("ping -c 1 -W 2 $address",5000,token,null).forTarget(name,address)
+                        }
+                    }
+                    ensureActive()
+                    if(generation==scanEpoch)results=results+(name to result)
+                }
+                if(generation==scanEpoch)event="Diagnóstico finalizado: ${results.size} equipos."
+            } catch(cancelled: CancellationException) {
+                if(generation==scanEpoch) {
+                    results=results+targets.filter { it.first !in results }.associate { (name,offset) ->
+                        name to DiagnosticResult(name,ipAt(requestedBase,offset),source,DiagnosticStatus.CANCELLED,0,null)
+                    }
+                    event="Diagnóstico cancelado."
+                }
+                throw cancelled
+            } finally { if(generation==scanEpoch)scanRunning=false }
         }
     }
 
@@ -193,79 +236,19 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
             }
         } else {
             Text(event, style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(base, { base = it.take(18); results = emptyMap() }, label = { Text("IP LAN base del CT (IPv4 o CIDR)") }, singleLine = true)
+            OutlinedTextField(base, { scanEpoch++; scanJob?.cancel(); scanRunning=false; base = it.take(18); results = emptyMap() }, label = { Text("IP LAN base del CT (IPv4 o CIDR)") }, singleLine = true)
             if (tab == 0 || tab == 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    val requestedBase = base
-                    results = emptyMap()
-                    scanRunning = true
-                    scanJob = scope.launch {
-                        try {
-                            for ((name, offset) in targets) {
-                                ensureActive()
-                                val address = ipAt(requestedBase, offset)
-                                if (notConfigured[name] == true) {
-                                    results = results + (name to "No configurado")
-                                    continue
-                                }
-                                val result = withContext(Dispatchers.IO) {
-                                    if (address == null) "IP no válida" else try {
-                                        if (InetAddress.getByName(address).isReachable(900)) "$address · responde"
-                                        else "$address · sin respuesta"
-                                    } catch (_: Exception) { "$address · error de diagnóstico" }
-                                }
-                                ensureActive()
-                                results = results + (name to result)
-                            }
-                            event = "Escaneo completo: " + results.size + " equipos comprobados."
-                        } catch (_: CancellationException) {
-                            event = "Escaneo cancelado."
-                        } finally { scanRunning = false }
-                    }
-                }, enabled = !scanRunning && ipAt(base, 14) != null) { Text(if (scanRunning) "Escaneando…" else "Iniciar comprobación") }
-                OutlinedButton(onClick = {
-                    val requestedBase = base
-                    results = emptyMap()
-                    scanRunning = true
-                    scanJob = scope.launch {
-                        try {
-                            for ((name, offset) in targets) {
-                                ensureActive()
-                                val address = ipAt(requestedBase, offset)
-                                if (notConfigured[name] == true) {
-                                    results = results + (name to "No configurado")
-                                    continue
-                                }
-                                val result = if (address == null) "IP no válida" else try {
-                                    val response = withContext(Dispatchers.IO) {
-                                        transport.diagnostic("ping -c 1 -W 2 $address")
-                                    }
-                                    val reachable = response.contains("0% packet loss") ||
-                                        response.contains("1 packets received") ||
-                                        response.contains("1 received")
-                                    if (reachable) "$address · responde"
-                                    else "$address · sin respuesta"
-                                } catch (_: CancellationException) {
-                                    throw CancellationException()
-                                } catch (_: Exception) { "$address · error de diagnóstico" }
-                                ensureActive()
-                                results = results + (name to result)
-                            }
-                            event = "Diagnóstico desde Mango finalizado: " + results.size + " equipos."
-                        } catch (_: CancellationException) {
-                            event = "Diagnóstico desde Mango cancelado."
-                        } finally { scanRunning = false }
-                    }
-                }, enabled = !scanRunning && transport.connected() && ipAt(base, 14) != null) {
-                    Text("Ping desde Mango")
-                }
+                Button(onClick = { startScan(DiagnosticSource.DIRECT_ANDROID) },
+                    enabled = !scanRunning && ipAt(base,14)!=null) { Text(if(scanRunning) "Escaneando…" else "Iniciar comprobación") }
+                OutlinedButton(onClick = { startScan(DiagnosticSource.MANGO_SSH) },
+                    enabled = !scanRunning && transport.connected() && ipAt(base,14)!=null) { Text("Ping desde Mango") }
                 OutlinedButton(onClick = { scanJob?.cancel() }, enabled = scanRunning) { Text("Cancelar") }
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 items(targets) { (name, offset) ->
                     val computed = ipAt(base, offset) ?: "—"
                     ListItem(headlineContent = { Text(name) },
-                        supportingContent = { Text(results[name] ?: computed) },
+                        supportingContent = { Text(results[name]?.let { "${it.address ?: computed} · ${it.label()}" } ?: computed) },
                         trailingContent = {
                             if (tab == 2) {
                                 Checkbox(checked = notConfigured[name] == true,

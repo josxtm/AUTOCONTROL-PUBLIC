@@ -2,7 +2,7 @@
 
 ## Arquitectura y alcance
 
-Esta rama parte de la integración previa en `feat/tablet-industrial-gui-mangossh`. No incorpora el rediseño de tres paneles del PR de GUI. No requiere instalar `MANGOSSH-PUBLIC` en el dispositivo: su clase de transporte SSH ya estaba incorporada en el paquete interno `sniffer`, y se ha mantenido sin cambios en la identidad de huella y el canal interactivo.
+Esta rama parte de la integración previa en `feat/tablet-industrial-gui-mangossh`. No incorpora el rediseño de tres paneles del PR de GUI. No requiere instalar `MANGOSSH-PUBLIC` en el dispositivo: su clase de transporte SSH ya estaba incorporada en el paquete interno `sniffer`, y se conserva como motor JSch, con estabilización de cancelación, recursos y pines por endpoint.
 
 - `SshTransport.java`: canal SSH con autenticación temporal, verificación de huella, comandos de lectura y terminal interactiva.
 - `EndpointPolicy.java`: validación de host/usuario y comandos de diagnóstico de lectura, incluido ping de un paquete a una IPv4 validada.
@@ -42,3 +42,15 @@ Esta rama parte de la integración previa en `feat/tablet-industrial-gui-mangoss
 - En el canal debug actual se mantiene la instalación manual después de desinstalar la APK anterior, con copia cifrada previa si hay datos.
 
 **No modificar el diseño aprobado B en esta fase. No fusionar automáticamente con main.**
+
+## Fase 1: transporte estabilizado
+
+`DiagnosticResult`, `DiagnosticStatus` y `DiagnosticSource` separan datos de presentación. Un registro no incluye contraseña ni salida de comandos. `NO_RESPONSE` significa ausencia de respuesta observada, nunca desconexión confirmada. El ping remoto usa el estado de salida (0 respuesta; 1 sin respuesta si no hay stderr; otros/error de ejecución: error SSH/comando), sin buscar subcadenas ambiguas como porcentajes de pérdida. Confirmar esa convención y las opciones de ping en el firmware concreto.
+
+`CommandRunner` aplica deadline monotónico, supervisión y cancelación activa, conserva hasta 64 KiB de salida y cierra recursos en éxito/error/timeout/cancelación. La lectura por sondeo de la pipe y la espera de cierre/código de salida están dentro del mismo límite. La limpieza puede añadir hasta el margen de cierre de 250 ms y planificación del sistema. No se crean lectores por comando. La terminal interactiva mantiene un lector propio durante su sesión y lo termina al cerrar.
+
+El puente de coroutines vincula la cancelación al token Java incluso si el trabajador IO está detenido. Cancelar o cambiar la base CT retira resultados antiguos; los estados restantes se marcan cancelados cuando corresponde. Un comando cancelado no bloquea `disconnect()` por un monitor global.
+
+JSch se fija en 2.28.8. Se verificó en el JAR y fuentes oficiales la API `setPassword(byte[])`, que evita el String adicional indicado como riesgo en la auditoría. Los pines nuevos distinguen host y puerto y migran las identidades antiguas exactas; una identidad nueva exige confirmación explícita. El usuario, host y puerto solo se persisten con «Guardar perfil».
+
+`INTERNET` se utiliza exclusivamente para las operaciones iniciadas por el usuario; sin telemetría ni conexión automática. Los diez temas, iconos y composición existentes no cambian. La terminal continúa siendo textual, sin emulación ANSI completa. CI y las pruebas de loopback no sustituyen las comprobaciones físicas autorizadas con Mango.
