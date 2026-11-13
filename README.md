@@ -5,23 +5,25 @@ Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.communi
 ## Módulos
 
 - `app`: interfaz **Kotlin y Jetpack Compose**, diez temas persistentes, navegación de registros, diario, documentos y copias. Ancho adaptable y contenido desplazable en móvil/tablet.
-- `storage`: catálogo JSON incremental, índice SQLite por identificador configurable, fichas con selección de campos, notas individuales, diario paginado y documentos privados. Copias portables cifradas y restauración transaccional.
+- `storage`: catálogo CSV mensual con actualización incremental en SQLite e índice por matrícula, fichas con selección de campos, notas individuales, diario paginado y documentos privados. Copias portables cifradas y restauración transaccional.
 - `documents`: adjuntos inertes aportados por el usuario y edición de texto UTF-8. No ejecuta macros, scripts ni plantillas. Los demás formatos se conservan para exportar su archivo original; no se ofrece edición de DOCX/PDF ni interpretación de documentos oficiales.
 - `ocr`: Tesseract4Android 4.9.0 estándar, sin modelos incluidos. Importa explícitamente un modelo traineddata compatible y reconoce imágenes seleccionadas por el usuario **sin red**. El texto reconocido se revisa en el editor antes de guardarlo.
 
 El permiso `INTERNET` se utiliza para SNIFFER LAN y MangoSSH, iniciados explícitamente por el usuario. No hay telemetría ni conexiones automáticas. No se incorporan plantillas, catálogos ni documentos de centros. El diagnóstico directo y el ping remoto expresan resultados tipados; ausencia de respuesta ICMP no confirma desconexión. La terminal interactiva permite comandos arbitrarios solo después de confirmar el acceso a un equipo autorizado. Los diagnósticos predefinidos están restringidos. Capturas y copias automáticas del sistema están deshabilitadas. El selector y el teclado tienen políticas propias: elige proveedores locales autorizados.
 
-## Catálogos y trabajo
+## Catálogo GRID MT de eSir: CSV sin conversiones
 
-Importa una lista JSON de objetos con valores simples (texto, números, booleanos o `null`), sin objetos/listas anidados. Ejemplo **sintético**:
+La pantalla CT permite seleccionar directamente el archivo original CSV/TSV exportado por el técnico, sin convertirlo previamente a JSON. Se admiten separadores punto y coma, coma o tabulador, cabecera con matrícula, campos entre comillas y texto UTF-8 (con/sin BOM) o Windows-1252. La importación no necesita Internet y nunca descarga datos por su cuenta.
 
-```text
-[{"id":"SYN-001","label":"Synthetic example","active":true}]
-```
+**Flujo:** seleccionar archivo → obtener vista previa de altas, modificaciones, sin cambios y CT históricos → confirmar o cancelar. Antes de confirmar, SQLite revierte la simulación completa; al confirmar, todos los cambios se aplican en una única transacción. Un archivo truncado, con matrículas duplicadas o con cabecera inválida no modifica el estado existente.
 
-Configura `id` como campo identificador para ese ejemplo. Búsqueda exacta y sensible a mayúsculas; conserva ceros iniciales en cadenas. Los valores se muestran y conservan como texto; `null` se muestra vacío. Rechaza campos o identificadores repetidos, identificadores nulos/vacíos, JSON inválido y contenido sobrante. Una importación correcta sustituye catálogo y notas con confirmación; conserva diario y documentos. Si falla, revierte todos los cambios.
+**Conservación:** los registros con la misma matrícula se actualizan; los nuevos se añaden; los CT que no aparecen en el nuevo CSV permanecen disponibles como registros históricos. Ni las notas asociadas, ni el diario, ni los documentos se borran al actualizar el catálogo. Los campos locales que no figuran en el CSV también se conservan. Se protege la compatibilidad con el identificador de los registros que ya existen; si cambia el identificador y hay datos antiguos, la actualización se rechaza en vez de asociar incorrectamente notas.
 
-Límites: 64 Mi de caracteres de JSON; un millón de registros; 100 campos distintos; nombres de campo de 128 caracteres; identificadores de 256; valores, notas, entradas y textos editables de 16000; 262144 caracteres acumulados por registro; tokens serializados de 65536 caracteres. Diario en páginas de 25 entradas. Adjuntos de hasta 4 MiB cada uno, 16 MiB en total y 200 documentos; los blobs SQLite se leen por fragmentos. Los textos más largos y los archivos binarios se conservan como adjuntos sin edición.
+**Limitaciones iniciales:** el identificador se busca preferentemente por una cabecera equivalente a `MATRÍCULA`; si no existe, se exige un campo identificador configurado. Las búsquedas continúan siendo exactas. Si la exportación real usa una estructura distinta, será necesario ajustar el mapeo tras revisar una muestra anonimizada. Por ahora se admiten archivos `.csv`, `.tsv` y `.txt`; los libros `.xls`/`.xlsx` no se interpretan directamente hasta validar la estructura real del fichero. Los históricos se conservan y siguen apareciendo en búsquedas exactas, sin marcarse aún como inactivos.
+
+La base SQLite conserva internamente el payload de registros y el formato de copias cifradas anteriores. **Esto no exige archivos JSON al técnico** ni modifica el formato `.acpb`.
+
+Límites: hasta 64 Mi caracteres de CSV; un millón de registros; 100 campos; cabeceras de 128 caracteres; identificadores de 256; celdas de 16000 y registros de 262144. Adjuntos de hasta 4 MiB cada uno y 16 MiB en total.
 
 ## Documentos y OCR
 
