@@ -52,6 +52,70 @@ public final class WorkspaceStoreTest extends TestCase {
         store.importCatalog(new StringReader("[{\"code\":\"SYN-NEW\"}]"), "code");
         assertNull(store.find("SYN-001")); assertEquals("", store.note("SYN-001")); assertEquals(1, store.journal(Long.MAX_VALUE).size());
     }
+
+    public void testEsirCsvPreviewAndMonthlyRefreshKeepNotesAndHistoricalCt() throws Exception {
+        store.importCatalog(new StringReader(
+            "[{\\"MATRÍCULA\\":\\"SYN-001\\",\\"IP LAN\\":\\"192.0.2.10\\",\\"LOCAL\\":\\"keep\\"}," +
+            "{\\"MATRÍCULA\\":\\"SYN-OLD\\",\\"IP LAN\\":\\"192.0.2.11\\"}]"), "MATRÍCULA");
+        store.saveNote("SYN-001", "Nota de campo");
+        store.saveNote("SYN-OLD", "Nota histórica");
+        store.addJournal("Diario independiente");
+        String before = backup();
+        String csv = "\\uFEFFMATRICULA;IP_LAN;NOMBRE\\r\\n" +
+            "SYN-001;192.0.2.20;\\\"CT; actualizado\\\"\\r\\n" +
+            "SYN-NEW;192.0.2.30;Centro nuevo\\r\\n";
+        WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
+        assertEquals(before, backup());
+        assertEquals(2, preview.rows);
+        assertEquals(1, preview.added);
+        assertEquals(1, preview.changed);
+        assertEquals(1, preview.retained);
+        WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, applied.added);
+        assertEquals("192.0.2.20", store.find("SYN-001").get("IP LAN"));
+        assertEquals("CT; actualizado", store.find("SYN-001").get("NOMBRE"));
+        assertEquals("keep", store.find("SYN-001").get("LOCAL"));
+        assertEquals("Nota de campo", store.note("SYN-001"));
+        assertNotNull(store.find("SYN-OLD"));
+        assertEquals("Nota histórica", store.note("SYN-OLD"));
+        assertNotNull(store.find("SYN-NEW"));
+        assertEquals("MATRÍCULA", store.setting("identifier"));
+        assertEquals(1, store.journal(Long.MAX_VALUE).size());
+        // The resulting backup remains restorable with the original identifier.
+        String after = backup();
+        store.restore(new StringReader(after));
+        assertEquals(after, backup());
+        WorkspaceStore.CsvUpdate repeated = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(0, repeated.changed);
+        assertEquals(2, repeated.unchanged);
+    }
+
+    public void testEsirCsvErrorsRollbackWithoutDeletingNotes() throws Exception {
+        store.importCatalog(new StringReader("[{\\"MATRÍCULA\\":\\"SYN-001\\",\\"IP LAN\\":\\"192.0.2.10\\"}]"), "MATRÍCULA");
+        store.saveNote("SYN-001", "Nota conservada");
+        String before = backup();
+        String[] invalid = {
+            "MATRICULA;IP LAN\\nSYN-X;192.0.2.4\\nSYN-X;192.0.2.5\\n",
+            "MATRICULA;IP LAN\\nSYN-X;192.0.2.4\\nSYN-BROKEN\\n",
+            "MATRICULA;IP LAN\\nSYN-X;\\\"comillas sin cerrar",
+            "IP LAN;NOMBRE\\n192.0.2.3;Sin matrícula\\n",
+            "MATRICULA;IP LAN\\n;192.0.2.4\\n"
+        };
+        for (String csv : invalid) {
+            try { store.updateCsvCatalog(new StringReader(csv), "id", true); fail("CSV inválido aceptado"); }
+            catch (java.io.IOException expected) { }
+            assertEquals(before, backup());
+            assertEquals("Nota conservada", store.note("SYN-001"));
+        }
+    }
+
+    public void testCsvCommaSeparatedQuotedFields() throws Exception {
+        String csv = "MATRÍCULA,IP LAN,NOMBRE\\r\\nSYN-001,192.0.2.10,\\\"Prueba, norte\\\"\\r\\n";
+        WorkspaceStore.CsvUpdate summary = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, summary.added);
+        assertEquals("Prueba, norte", store.find("SYN-001").get("NOMBRE"));
+    }
+
     public void testBackupRestoreRoundTripAndReopen() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note\nα"); store.addJournal("Synthetic diary");
         store.setting("visible", "{\"label\":\"\"}"); String snapshot = backup();
