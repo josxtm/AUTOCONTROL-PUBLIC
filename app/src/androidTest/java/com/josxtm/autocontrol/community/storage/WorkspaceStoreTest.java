@@ -52,6 +52,70 @@ public final class WorkspaceStoreTest extends TestCase {
         store.importCatalog(new StringReader("[{\"code\":\"SYN-NEW\"}]"), "code");
         assertNull(store.find("SYN-001")); assertEquals("", store.note("SYN-001")); assertEquals(1, store.journal(Long.MAX_VALUE).size());
     }
+
+    public void testEsirCsvPreviewAndMonthlyRefreshKeepNotesAndHistoricalCt() throws Exception {
+        store.importCatalog(new StringReader(
+            "[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"Synthetic-network-old\",\"LOCAL\":\"keep\"}," +
+            "{\"MATRÍCULA\":\"SYN-OLD\",\"IP LAN\":\"Synthetic-network-legacy\"}]"), "MATRÍCULA");
+        store.saveNote("SYN-001", "Nota de campo");
+        store.saveNote("SYN-OLD", "Nota histórica");
+        store.addJournal("Diario independiente");
+        String before = backup();
+        String csv = "\uFEFFMATRICULA;IP_LAN;NOMBRE\r\n" +
+            "SYN-001;Synthetic-network-new;\"CT; actualizado\"\r\n" +
+            "SYN-NEW;Synthetic-network-added;Centro nuevo\r\n";
+        WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
+        assertEquals(before, backup());
+        assertEquals(2, preview.rows);
+        assertEquals(1, preview.added);
+        assertEquals(1, preview.changed);
+        assertEquals(1, preview.retained);
+        WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, applied.added);
+        assertEquals("Synthetic-network-new", store.find("SYN-001").get("IP LAN"));
+        assertEquals("CT; actualizado", store.find("SYN-001").get("NOMBRE"));
+        assertEquals("keep", store.find("SYN-001").get("LOCAL"));
+        assertEquals("Nota de campo", store.note("SYN-001"));
+        assertNotNull(store.find("SYN-OLD"));
+        assertEquals("Nota histórica", store.note("SYN-OLD"));
+        assertNotNull(store.find("SYN-NEW"));
+        assertEquals("MATRÍCULA", store.setting("identifier"));
+        assertEquals(1, store.journal(Long.MAX_VALUE).size());
+        // The resulting backup remains restorable with the original identifier.
+        String after = backup();
+        store.restore(new StringReader(after));
+        assertEquals(after, backup());
+        WorkspaceStore.CsvUpdate repeated = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(0, repeated.changed);
+        assertEquals(2, repeated.unchanged);
+    }
+
+    public void testEsirCsvErrorsRollbackWithoutDeletingNotes() throws Exception {
+        store.importCatalog(new StringReader("[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"Synthetic-network-old\"}]"), "MATRÍCULA");
+        store.saveNote("SYN-001", "Nota conservada");
+        String before = backup();
+        String[] invalid = {
+            "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-X;Synthetic-network-b\n",
+            "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-BROKEN\n",
+            "MATRICULA;IP LAN\nSYN-X;\"comillas sin cerrar",
+            "IP LAN;NOMBRE\nSynthetic-network-c;Sin matrícula\n",
+            "MATRICULA;IP LAN\n;Synthetic-network-a\n"
+        };
+        for (String csv : invalid) {
+            try { store.updateCsvCatalog(new StringReader(csv), "id", true); fail("CSV inválido aceptado"); }
+            catch (java.io.IOException expected) { }
+            assertEquals(before, backup());
+            assertEquals("Nota conservada", store.note("SYN-001"));
+        }
+    }
+
+    public void testCsvCommaSeparatedQuotedFields() throws Exception {
+        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\nSYN-001,Synthetic-network-old,\"Prueba, norte\"\r\n";
+        WorkspaceStore.CsvUpdate summary = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, summary.added);
+        assertEquals("Prueba, norte", store.find("SYN-001").get("NOMBRE"));
+    }
+
     public void testBackupRestoreRoundTripAndReopen() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note\nα"); store.addJournal("Synthetic diary");
         store.setting("visible", "{\"label\":\"\"}"); String snapshot = backup();
