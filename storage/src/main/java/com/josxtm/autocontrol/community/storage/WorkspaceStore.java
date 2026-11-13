@@ -131,8 +131,9 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
                 try (Cursor c = db.rawQuery("SELECT payload FROM records WHERE id=?", new String[]{id})) {
                     if (c.moveToFirst()) current = c.getString(0);
                 }
-                LinkedHashMap<String, String> merged = current == null
-                    ? new LinkedHashMap<>() : JsonCodec.decode(current);
+                LinkedHashMap<String, String> previous = current == null ? null : JsonCodec.decode(current);
+                LinkedHashMap<String, String> merged = previous == null
+                    ? new LinkedHashMap<>() : new LinkedHashMap<>(previous);
                 // Retain only user-specific fields absent from the export; replace changed catalog columns.
                 Set<String> columns = new LinkedHashSet<>();
                 for (String key : incoming.keySet()) columns.add(CsvCatalog.normalized(key));
@@ -152,7 +153,7 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
                     newRecord.put("id", id); newRecord.put("payload", encoded);
                     db.insertOrThrow("records", null, newRecord);
                     stats[0]++;
-                } else if (current.equals(encoded)) {
+                } else if (previous.equals(merged)) {
                     stats[2]++;
                 } else {
                     ContentValues updated = new ContentValues(); updated.put("payload", encoded);
