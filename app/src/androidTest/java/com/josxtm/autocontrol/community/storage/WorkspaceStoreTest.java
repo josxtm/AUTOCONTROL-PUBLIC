@@ -55,15 +55,15 @@ public final class WorkspaceStoreTest extends TestCase {
 
     public void testEsirCsvPreviewAndMonthlyRefreshKeepNotesAndHistoricalCt() throws Exception {
         store.importCatalog(new StringReader(
-            "[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"192.0.2.10\",\"LOCAL\":\"keep\"}," +
-            "{\"MATRÍCULA\":\"SYN-OLD\",\"IP LAN\":\"192.0.2.11\"}]"), "MATRÍCULA");
+            "[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"Synthetic-network-old\",\"LOCAL\":\"keep\"}," +
+            "{\"MATRÍCULA\":\"SYN-OLD\",\"IP LAN\":\"Synthetic-network-legacy\"}]"), "MATRÍCULA");
         store.saveNote("SYN-001", "Nota de campo");
         store.saveNote("SYN-OLD", "Nota histórica");
         store.addJournal("Diario independiente");
         String before = backup();
         String csv = "\uFEFFMATRICULA;IP_LAN;NOMBRE\r\n" +
-            "SYN-001;192.0.2.20;\\"CT; actualizado\\"\r\n" +
-            "SYN-NEW;192.0.2.30;Centro nuevo\r\n";
+            "SYN-001;Synthetic-network-new;\\"CT; actualizado\\"\r\n" +
+            "SYN-NEW;Synthetic-network-added;Centro nuevo\r\n";
         WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
         assertEquals(before, backup());
         assertEquals(2, preview.rows);
@@ -72,7 +72,7 @@ public final class WorkspaceStoreTest extends TestCase {
         assertEquals(1, preview.retained);
         WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true);
         assertEquals(1, applied.added);
-        assertEquals("192.0.2.20", store.find("SYN-001").get("IP LAN"));
+        assertEquals("Synthetic-network-new", store.find("SYN-001").get("IP LAN"));
         assertEquals("CT; actualizado", store.find("SYN-001").get("NOMBRE"));
         assertEquals("keep", store.find("SYN-001").get("LOCAL"));
         assertEquals("Nota de campo", store.note("SYN-001"));
@@ -91,15 +91,15 @@ public final class WorkspaceStoreTest extends TestCase {
     }
 
     public void testEsirCsvErrorsRollbackWithoutDeletingNotes() throws Exception {
-        store.importCatalog(new StringReader("[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"192.0.2.10\"}]"), "MATRÍCULA");
+        store.importCatalog(new StringReader("[{\"MATRÍCULA\":\"SYN-001\",\"IP LAN\":\"Synthetic-network-old\"}]"), "MATRÍCULA");
         store.saveNote("SYN-001", "Nota conservada");
         String before = backup();
         String[] invalid = {
-            "MATRICULA;IP LAN\nSYN-X;192.0.2.4\nSYN-X;192.0.2.5\n",
-            "MATRICULA;IP LAN\nSYN-X;192.0.2.4\nSYN-BROKEN\n",
+            "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-X;Synthetic-network-b\n",
+            "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-BROKEN\n",
             "MATRICULA;IP LAN\nSYN-X;\\"comillas sin cerrar",
-            "IP LAN;NOMBRE\n192.0.2.3;Sin matrícula\n",
-            "MATRICULA;IP LAN\n;192.0.2.4\n"
+            "IP LAN;NOMBRE\nSynthetic-network-c;Sin matrícula\n",
+            "MATRICULA;IP LAN\n;Synthetic-network-a\n"
         };
         for (String csv : invalid) {
             try { store.updateCsvCatalog(new StringReader(csv), "id", true); fail("CSV inválido aceptado"); }
@@ -110,7 +110,7 @@ public final class WorkspaceStoreTest extends TestCase {
     }
 
     public void testCsvCommaSeparatedQuotedFields() throws Exception {
-        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\nSYN-001,192.0.2.10,\\"Prueba, norte\\"\r\n";
+        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\nSYN-001,Synthetic-network-old,\\"Prueba, norte\\"\r\n";
         WorkspaceStore.CsvUpdate summary = store.updateCsvCatalog(new StringReader(csv), "id", true);
         assertEquals(1, summary.added);
         assertEquals("Prueba, norte", store.find("SYN-001").get("NOMBRE"));
