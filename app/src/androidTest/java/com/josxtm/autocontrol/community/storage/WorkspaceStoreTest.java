@@ -62,7 +62,7 @@ public final class WorkspaceStoreTest extends TestCase {
         store.addJournal("Diario independiente");
         String before = backup();
         String csv = "\uFEFFMATRICULA;IP_LAN;NOMBRE\r\n" +
-            "SYN-001;Synthetic-network-new;\\"CT; actualizado\\"\r\n" +
+            "SYN-001;Synthetic-network-new;\"CT; actualizado\"\r\n" +
             "SYN-NEW;Synthetic-network-added;Centro nuevo\r\n";
         WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
         assertEquals(before, backup());
@@ -97,7 +97,7 @@ public final class WorkspaceStoreTest extends TestCase {
         String[] invalid = {
             "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-X;Synthetic-network-b\n",
             "MATRICULA;IP LAN\nSYN-X;Synthetic-network-a\nSYN-BROKEN\n",
-            "MATRICULA;IP LAN\nSYN-X;\\"comillas sin cerrar",
+            "MATRICULA;IP LAN\nSYN-X;\"comillas sin cerrar",
             "IP LAN;NOMBRE\nSynthetic-network-c;Sin matrícula\n",
             "MATRICULA;IP LAN\n;Synthetic-network-a\n"
         };
@@ -110,7 +110,7 @@ public final class WorkspaceStoreTest extends TestCase {
     }
 
     public void testCsvCommaSeparatedQuotedFields() throws Exception {
-        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\nSYN-001,Synthetic-network-old,\\"Prueba, norte\\"\r\n";
+        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\nSYN-001,Synthetic-network-old,\"Prueba, norte\"\r\n";
         WorkspaceStore.CsvUpdate summary = store.updateCsvCatalog(new StringReader(csv), "id", true);
         assertEquals(1, summary.added);
         assertEquals("Prueba, norte", store.find("SYN-001").get("NOMBRE"));
