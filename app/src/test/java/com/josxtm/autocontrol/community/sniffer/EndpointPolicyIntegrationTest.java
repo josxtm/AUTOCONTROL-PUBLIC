@@ -7,6 +7,7 @@ public final class EndpointPolicyIntegrationTest {
     private String ip() { return String.join(".", "198","51","100","7"); }
 
     @Test public void acceptsOnlyReadOnlyCommands() {
+        assertFalse(EndpointPolicy.diagnostic(null));
         assertTrue(EndpointPolicy.diagnostic("whoami"));
         assertTrue(EndpointPolicy.diagnostic("ping -c 1 -W 2 " + ip()));
         assertFalse(EndpointPolicy.diagnostic("ping " + ip()));

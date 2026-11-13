@@ -25,6 +25,12 @@ public final class LanTargetsTest {
     }
     @Test public void restrictsToHostRangeForMask() {
         String network=ip(203,0,113,0);
+        assertEquals(ip(203,0,113,1), LanTargets.at(network, 30, 1));
+        assertEquals(ip(203,0,113,2), LanTargets.at(network, 30, 2));
+        for (int offset : new int[]{0,3}) {
+            try { LanTargets.at(network,30,offset); fail("Network/broadcast accepted"); }
+            catch (IllegalArgumentException expected) { }
+        }
         assertEquals(ip(203,0,113,14), LanTargets.at(network, 27, 14));
         try { LanTargets.at(network, 27, 31); fail("Broadcast accepted"); }
         catch (IllegalArgumentException expected) {}

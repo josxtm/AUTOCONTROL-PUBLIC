@@ -34,7 +34,7 @@ public final class LanTargets {
     }
     /** Interprets the input as the network's base, never as a device address. */
     public static String at(String base, int prefix, int offset) {
-        if (prefix < 1 || prefix > 30 || offset < 0 || offset > 254) throw new IllegalArgumentException("Prefijo o offset inválido");
+        if (prefix < 1 || prefix > 30 || offset < 1 || offset > 254) throw new IllegalArgumentException("Prefijo o offset inválido");
         long network = parse(base);
         long mask = (0xffffffffL << (32-prefix)) & 0xffffffffL;
         if ((network & mask) != network) throw new IllegalArgumentException("La IP no es la base de la subred");

@@ -41,6 +41,7 @@ final class CommandRunner {
         }, timeoutMillis, TimeUnit.MILLISECONDS);
         Integer exit = null;
         DiagnosticStatus status = DiagnosticStatus.SSH_ERROR;
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (CancellationToken.Registration ignored = cancellation.onCancel(cancel)) {
             if (stopped.get() == null) {
                 InputStream input = channel.stdout(); stream.set(input);
@@ -54,10 +55,12 @@ final class CommandRunner {
                     if (remaining <= 0) stopped.compareAndSet(null, DiagnosticStatus.TIMEOUT);
                     else channel.connect((int)Math.min(10000, remaining));
                 }
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
                 byte[] buffer = new byte[2048];
                 boolean eof = false;
                 while (stopped.get() == null) {
+                    if (System.nanoTime()-start >= TimeUnit.MILLISECONDS.toNanos(timeoutMillis)) {
+                        stopped.compareAndSet(null, DiagnosticStatus.TIMEOUT); break;
+                    }
                     if (Thread.currentThread().isInterrupted()) { cancel.run(); break; }
                     // JSch supplies a local pipe. Polling also bounds the wait for EOF and exit status.
                     int available = input.available();
@@ -75,7 +78,6 @@ final class CommandRunner {
                         break;
                     } else Thread.sleep(10);
                 }
-                if (output != null && bytes.size() > 0) output.onText(new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt(); stopped.compareAndSet(null, DiagnosticStatus.CANCELLED);
@@ -84,6 +86,8 @@ final class CommandRunner {
         } finally {
             timer.cancel(false); cleanup.run();
         }
+        // Preserve partial output even if closing the pipe interrupted a read/available call.
+        if (output != null && bytes.size() > 0) output.onText(new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
         DiagnosticStatus terminal = stopped.get();
         return new DiagnosticResult("", null, DiagnosticSource.MANGO_SSH,
             terminal == null ? status : terminal, TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start), exit);

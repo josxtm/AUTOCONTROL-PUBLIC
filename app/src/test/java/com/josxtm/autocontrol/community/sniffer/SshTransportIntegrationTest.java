@@ -50,7 +50,7 @@ public class SshTransportIntegrationTest {
     @After public void stop()throws Exception{if(client!=null)client.disconnect();if(server!=null)server.stop(true);}
     @Test(timeout=20000) public void realChannelTimesOutThenReusesVerifiedSession()throws Exception{
         connect();StringBuilder output=new StringBuilder();
-        DiagnosticResult timeout=client.diagnostic("pwd",200,new CancellationToken(),output::append);
+        DiagnosticResult timeout=client.diagnostic("pwd",1000,new CancellationToken(),output::append);
         assertEquals(DiagnosticStatus.TIMEOUT,timeout.status);assertTrue(output.toString().contains("partial"));
         assertTrue(destroyed.poll(2,TimeUnit.SECONDS).await(2,TimeUnit.SECONDS));assertTrue(client.connected());
         assertEquals(DiagnosticStatus.VALID_RESPONSE,client.diagnostic("whoami",3000,new CancellationToken(),null).status);

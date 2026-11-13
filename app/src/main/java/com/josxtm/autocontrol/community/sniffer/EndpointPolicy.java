@@ -13,8 +13,8 @@ public final class EndpointPolicy {
     }
     private static final Set<String> DIAGNOSTICS = Set.of("whoami", "pwd", "date", "uname -a", "df -h");
     public static boolean diagnostic(String command) {
-        if (DIAGNOSTICS.contains(command)) return true;
         if (command == null) return false;
+        if (DIAGNOSTICS.contains(command)) return true;
         String prefix = "ping -c 1 -W 2 ";
         if (!command.startsWith(prefix)) return false;
         String ip = command.substring(prefix.length());
