@@ -26,7 +26,7 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val model: WorkspaceModel by viewModels()
-    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importCatalog) }
+    private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::previewCsv) }
     private val document = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importDocument) }
     private val ocrModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importModel) }
     private val image = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::recognize) }
@@ -100,10 +100,15 @@ class MainActivity : ComponentActivity() {
                 item { Text(m.message, style = MaterialTheme.typography.bodyMedium); if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 when (tab) {
                     0 -> {
-                        item { Text("Catálogo local", style = MaterialTheme.typography.titleLarge) }
-                        item { Text("JSON con lista de registros y campos simples. La búsqueda usa el identificador exacto configurado al importar.") }
-                        item { Editor("Campo identificador", m.identifier, 128, enabled, true) { m.identifier = it } }
-                        item { Action("Importar catálogo JSON", enabled) { confirm = "catalog" } }
+                        item { Text("GRID MT · eSir", style = MaterialTheme.typography.titleLarge) }
+                        item { Text("Importa el CSV original de eSir (.csv, .tsv o .txt). No necesitas convertirlo a JSON. Actualiza por matrícula, sin borrar CT históricos, notas ni diario.") }
+                        item { Action("Seleccionar actualización CSV", enabled, pickCatalog) }
+                        m.csvPreview?.let { preview ->
+                            item { Text("Vista previa: ${preview.rows} CT del archivo · ${preview.added} nuevos · ${preview.changed} modificados · ${preview.unchanged} sin cambios · ${preview.retained} históricos conservados.") }
+                            item { Text("Identificador: ${preview.identifier}. Los CT ausentes se conservan sin eliminar sus notas. Se actualizarán datos e IP del catálogo, nunca las anotaciones.") }
+                            item { Action("Confirmar actualización", enabled, m::applyCsv) }
+                            item { Action("Cancelar actualización", enabled, m::discardCsv) }
+                        }
                         item { Editor("Identificador exacto", m.query, 256, enabled, true) { m.query = it } }
                         item { Action("Buscar registro", enabled, m::search) }
                         item { Action("Campos visibles", enabled && m.fields.isNotEmpty()) { selected = m.visible; fieldsDialog = true } }
@@ -172,11 +177,10 @@ class MainActivity : ComponentActivity() {
     if (confirm.isNotEmpty()) AlertDialog(onDismissRequest = { confirm = ""; m.clearPassphrase() },
         title = { Text(if (confirm == "delete") "Eliminar documento" else "Sustituir datos locales") },
         text = { Text(when (confirm) {
-            "catalog" -> "Una importación correcta sustituye el catálogo y elimina sus notas. Conserva diario y documentos. Haz una copia antes. Un error revierte la operación."
             "delete" -> "Elimina el adjunto seleccionado de esta edición pública. Exporta una copia antes si deseas conservarlo."
             else -> "La restauración autenticada sustituye catálogo, notas, diario y documentos. Haz una copia antes. Una copia inválida conserva los datos actuales."
         }) },
-        confirmButton = { TextButton(onClick = { val choice = confirm; confirm = ""; when (choice) { "catalog" -> pickCatalog(); "delete" -> m.deleteDocument(); else -> restoreBackup() } }) { Text("Continuar") } },
+        confirmButton = { TextButton(onClick = { val choice = confirm; confirm = ""; when (choice) { "delete" -> m.deleteDocument(); else -> restoreBackup() } }) { Text("Continuar") } },
         dismissButton = { TextButton(onClick = { confirm = ""; m.clearPassphrase() }) { Text("Cancelar") } })
     if (fieldsDialog) AlertDialog(onDismissRequest = { fieldsDialog = false }, title = { Text("Campos visibles") },
         text = { LazyColumn { m.fields.forEach { field -> item { Row(verticalAlignment = Alignment.CenterVertically) {
