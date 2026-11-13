@@ -13,7 +13,10 @@ import com.josxtm.autocontrol.community.storage.WorkspaceStore
 import com.josxtm.autocontrol.community.storage.PortableBackup
 import com.josxtm.autocontrol.community.documents.DocumentEngine
 import com.josxtm.autocontrol.community.ocr.LocalOcr
+import java.io.IOException
 import java.io.InputStreamReader
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +44,8 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
             key == "IP LAN" || key == "IP_LAN"
         }?.value?.trim()?.takeIf { it.isNotEmpty() }
 
+    var csvPreview by mutableStateOf<WorkspaceStore.CsvUpdate?>(null); private set
+    private var csvCandidate: Uri? = null
     var note by mutableStateOf("")
     var journalText by mutableStateOf("")
     var journal by mutableStateOf<List<WorkspaceStore.Entry>>(emptyList()); private set
@@ -96,15 +101,48 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         val before = if (reset) Long.MAX_VALUE else journal.lastOrNull()?.id ?: Long.MAX_VALUE
         task({ store.journal(before) }) { if (it.isEmpty()) message = "No hay más entradas." else journal = it }
     }
-    fun importCatalog(uri: Uri) {
-        val field = identifier
-        task({
-            resolver.openInputStream(uri).use { input ->
-                requireNotNull(input)
-                store.importCatalog(InputStreamReader(input, StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)), field)
+    /** Preview is read-only: SQLite rolls the transaction back before showing changes. */
+    private fun csvFromUri(uri: Uri, apply: Boolean): WorkspaceStore.CsvUpdate {
+        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }?.lowercase(java.util.Locale.ROOT)
+        if (name != null && !(name.endsWith(".csv") || name.endsWith(".tsv") || name.endsWith(".txt")))
+            throw IOException("Selecciona el CSV original de eSir, no un JSON ni Excel.")
+        fun parse(charset: Charset): WorkspaceStore.CsvUpdate {
+            return resolver.openInputStream(uri).use { input ->
+                InputStreamReader(requireNotNull(input), charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)).use { reader ->
+                    store.updateCsvCatalog(reader, identifier, apply)
+                }
             }
-            snapshot()
-        }) { show(it); record = emptyMap(); activeId = null; note = ""; message = "Catálogo importado. El diario se conserva." }
+        }
+        return try { parse(StandardCharsets.UTF_8) }
+        catch (_: CharacterCodingException) { parse(Charset.forName("windows-1252")) }
+    }
+    fun previewCsv(uri: Uri) {
+        csvCandidate = null; csvPreview = null
+        task({ csvFromUri(uri, false) }) { summary ->
+            csvCandidate = uri
+            csvPreview = summary
+            message = "Vista previa calculada sin modificar datos. Confirma para aplicar la actualización."
+        }
+    }
+    fun applyCsv() {
+        val uri = csvCandidate ?: return
+        task({
+            val result = csvFromUri(uri, true)
+            Pair(result, snapshot())
+        }) { (summary, newSnapshot) ->
+            show(newSnapshot)
+            csvCandidate = null; csvPreview = null
+            activeId = null; record = emptyMap(); note = ""
+            message = "Actualización terminada: ${summary.added} nuevos, ${summary.changed} modificados, " +
+                "${summary.unchanged} sin cambios y ${summary.retained} históricos conservados. Notas y diario intactos."
+        }
+    }
+    fun discardCsv() {
+        csvCandidate = null; csvPreview = null
+        message = "Importación cancelada. Datos sin cambios."
     }
     fun importDocument(uri: Uri) = task({
         val title = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
