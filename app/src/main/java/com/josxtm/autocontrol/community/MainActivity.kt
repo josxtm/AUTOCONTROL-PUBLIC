@@ -101,8 +101,8 @@ class MainActivity : ComponentActivity() {
                 when (tab) {
                     0 -> {
                         item { Text("GRID MT · eSir", style = MaterialTheme.typography.titleLarge) }
-                        item { Text("Importa el CSV original de eSir (.csv, .tsv o .txt). No necesitas convertirlo a JSON. Actualiza por matrícula, sin borrar CT históricos, notas ni diario.") }
-                        item { Action("Seleccionar actualización CSV", enabled, pickCatalog) }
+                        item { Text("Importa el GRID MT original de eSir (.csv.gz o .csv). Solo se cargan matrículas 82, 28 y 45. Actualiza IP y datos técnicos por matrícula sin borrar notas ni diario.") }
+                        item { Action("Cargar GRID MT de eSir (.csv.gz)", enabled, pickCatalog) }
                         m.csvPreview?.let { preview ->
                             item { Text("Vista previa: ${preview.rows} CT del archivo · ${preview.added} nuevos · ${preview.changed} modificados · ${preview.unchanged} sin cambios · ${preview.retained} históricos conservados.") }
                             item { Text("Identificador: ${preview.identifier}. Los CT ausentes se conservan sin eliminar sus notas. Se actualizarán datos e IP del catálogo, nunca las anotaciones.") }
