@@ -84,7 +84,12 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     fun cycleTheme() { theme = (theme + 1) % 3; preferences.edit().putInt("theme", theme).apply() }
     fun selectTabletTheme(index: Int) { if (index in 0..9) { tabletTheme = index; preferences.edit().putInt("tabletTheme", index).apply() } }
     fun search() {
-        val id = query
+        val id = query.trim()
+        if (!(id.startsWith("82") || id.startsWith("28") || id.startsWith("45"))) {
+            record = emptyMap(); activeId = null; note = ""
+            message = "Solo se consultan matrículas que empiezan por 82, 28 o 45."
+            return
+        }
         task({ Pair(store.find(id), store.note(id)) }) { (value, body) ->
             record = value ?: emptyMap(); activeId = if (value == null) null else id; note = if (value == null) "" else body
             message = if (value == null) "Sin coincidencias." else "Registro encontrado."
