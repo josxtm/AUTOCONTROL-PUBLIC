@@ -14,7 +14,9 @@ import com.josxtm.autocontrol.community.storage.PortableBackup
 import com.josxtm.autocontrol.community.documents.DocumentEngine
 import com.josxtm.autocontrol.community.ocr.LocalOcr
 import java.io.IOException
+import java.io.BufferedInputStream
 import java.io.InputStreamReader
+import java.util.zip.GZIPInputStream
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
@@ -106,11 +108,19 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }?.lowercase(java.util.Locale.ROOT)
-        if (name != null && !(name.endsWith(".csv") || name.endsWith(".tsv") || name.endsWith(".txt")))
-            throw IOException("Selecciona el CSV original de eSir, no un JSON ni Excel.")
+        if (name != null && !(name.endsWith(".csv") || name.endsWith(".tsv") ||
+                    name.endsWith(".txt") || name.endsWith(".csv.gz")))
+            throw IOException("Selecciona el CSV o CSV.GZ original de eSir.")
         fun parse(charset: Charset): WorkspaceStore.CsvUpdate {
-            return resolver.openInputStream(uri).use { input ->
-                InputStreamReader(requireNotNull(input), charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            return resolver.openInputStream(uri).use { raw ->
+                val input = BufferedInputStream(requireNotNull(raw), 8192)
+                input.mark(4)
+                val gzip = input.read() == 0x1f && input.read() == 0x8b
+                input.reset()
+                if (name?.endsWith(".csv.gz") == true && !gzip)
+                    throw IOException("El archivo .csv.gz no contiene datos GZIP.")
+                val source = if (gzip) GZIPInputStream(input, 8192) else input
+                InputStreamReader(source, charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
                     .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)).use { reader ->
                     store.updateCsvCatalog(reader, identifier, apply)
                 }
