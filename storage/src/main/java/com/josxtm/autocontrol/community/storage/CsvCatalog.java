@@ -107,11 +107,16 @@ public final class CsvCatalog {
                 headers.set(i, header);
             }
             String id = identifier(headers, preferred);
+            int idColumn = headers.indexOf(id);
             int count = 0;
             List<String> cells;
             while ((cells = parser.next()) != null) {
                 if (cells.size() == 1 && cells.get(0).trim().isEmpty()) continue;
                 if (cells.size() != headers.size()) throw new IOException("Una fila CSV no coincide con la cabecera.");
+                String recordId = cells.get(idColumn).trim();
+                // Scope the technician's local workspace to the approved matrícula prefixes.
+                if (!(recordId.startsWith("82") || recordId.startsWith("28") || recordId.startsWith("45")))
+                    continue;
                 if (++count > WorkspaceStore.MAX_ROWS) throw new IOException("Límite de CT superado.");
                 LinkedHashMap<String, String> row = new LinkedHashMap<>();
                 int characters = 0;
@@ -126,7 +131,7 @@ public final class CsvCatalog {
                 row.put(id, key);
                 consumer.onRow(row, id);
             }
-            if (count == 0) throw new IOException("CSV sin registros.");
+            if (count == 0) throw new IOException("CSV sin CT con matrícula 82, 28 o 45.");
             return new Parsed(id, count, headers);
         }
     }
