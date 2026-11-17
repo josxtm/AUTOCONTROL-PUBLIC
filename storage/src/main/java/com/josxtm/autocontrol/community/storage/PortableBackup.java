@@ -13,7 +13,7 @@ import javax.crypto.spec.SecretKeySpec;
 /** Password-derived portable AES-GCM backups. Authentication completes before restore begins. */
 public final class PortableBackup {
     private static final byte[] MAGIC = "ACPB1".getBytes(StandardCharsets.US_ASCII);
-    private static final int MAX_BYTES = 64 * 1024 * 1024;
+    private static final int MAX_BYTES = 128 * 1024 * 1024;
     @FunctionalInterface public interface Export { void write(Writer output) throws Exception; }
     @FunctionalInterface public interface Restore { void read(Reader input) throws Exception; }
     private static Cipher cipher(int mode, char[] passphrase, byte[] salt, byte[] nonce) throws GeneralSecurityException {

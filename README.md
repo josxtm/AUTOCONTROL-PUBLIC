@@ -5,23 +5,29 @@ Aplicación Android local independiente. Paquete `com.josxtm.autocontrol.communi
 ## Módulos
 
 - `app`: interfaz **Kotlin y Jetpack Compose**, diez temas persistentes, navegación de registros, diario, documentos y copias. Ancho adaptable y contenido desplazable en móvil/tablet.
-- `storage`: catálogo JSON incremental, índice SQLite por identificador configurable, fichas con selección de campos, notas individuales, diario paginado y documentos privados. Copias portables cifradas y restauración transaccional.
+- `storage`: catálogo CSV mensual con actualización incremental en SQLite e índice por matrícula, fichas con selección de campos, notas individuales, diario paginado y documentos privados. Copias portables cifradas y restauración transaccional.
 - `documents`: adjuntos inertes aportados por el usuario y edición de texto UTF-8. No ejecuta macros, scripts ni plantillas. Los demás formatos se conservan para exportar su archivo original; no se ofrece edición de DOCX/PDF ni interpretación de documentos oficiales.
 - `ocr`: Tesseract4Android 4.9.0 estándar, sin modelos incluidos. Importa explícitamente un modelo traineddata compatible y reconoce imágenes seleccionadas por el usuario **sin red**. El texto reconocido se revisa en el editor antes de guardarlo.
 
 El permiso `INTERNET` se utiliza para SNIFFER LAN y MangoSSH, iniciados explícitamente por el usuario. No hay telemetría ni conexiones automáticas. No se incorporan plantillas, catálogos ni documentos de centros. El diagnóstico directo y el ping remoto expresan resultados tipados; ausencia de respuesta ICMP no confirma desconexión. La terminal interactiva permite comandos arbitrarios solo después de confirmar el acceso a un equipo autorizado. Los diagnósticos predefinidos están restringidos. Capturas y copias automáticas del sistema están deshabilitadas. El selector y el teclado tienen políticas propias: elige proveedores locales autorizados.
 
-## Catálogos y trabajo
+## Catálogo GRID MT de eSir: CSV sin conversiones
 
-Importa una lista JSON de objetos con valores simples (texto, números, booleanos o `null`), sin objetos/listas anidados. Ejemplo **sintético**:
+La pantalla CT permite seleccionar directamente el archivo original CSV/TSV o CSV.GZ exportado por el técnico, sin convertirlo previamente a JSON. Se admite el CSV comprimido .csv.gz original, sin descomprimir. Se reconocen separadores punto y coma, coma o tabulador, cabecera MATRICULA [BDI], campos entre comillas y texto UTF-8 (con/sin BOM) o Windows-1252. La importación no necesita Internet y nunca descarga datos por su cuenta.
 
-```text
-[{"id":"SYN-001","label":"Synthetic example","active":true}]
-```
+**Flujo:** elegir con casillas los prefijos 28, 45 y/o 82 (los tres marcados inicialmente) → seleccionar archivo → obtener vista previa únicamente de las zonas marcadas → confirmar o cancelar. La selección nunca borra CT de otras zonas ni sus notas; cambiar las casillas invalida la vista previa anterior. La vista previa consulta SQLite por lotes sin escribir registros ni metadatos; al confirmar, todos los cambios se aplican en una única transacción. Un archivo truncado, con matrículas duplicadas o con cabecera inválida no modifica el estado existente.
 
-Configura `id` como campo identificador para ese ejemplo. Búsqueda exacta y sensible a mayúsculas; conserva ceros iniciales en cadenas. Los valores se muestran y conservan como texto; `null` se muestra vacío. Rechaza campos o identificadores repetidos, identificadores nulos/vacíos, JSON inválido y contenido sobrante. Una importación correcta sustituye catálogo y notas con confirmación; conserva diario y documentos. Si falla, revierte todos los cambios.
+**Conservación:** los registros con la misma matrícula se actualizan; los nuevos se añaden; únicamente entran matrículas que empiecen por 82, 28 o 45. Los demás registros del archivo se omiten. Los CT que no aparecen en el nuevo CSV permanecen disponibles como registros históricos. Ni las notas asociadas, ni el diario, ni los documentos se borran al actualizar el catálogo. Los campos locales que no figuran en el CSV también se conservan. Se protege la compatibilidad con el identificador de los registros que ya existen; si cambia el identificador y hay datos antiguos, la actualización se rechaza en vez de asociar incorrectamente notas.
 
-Límites: 64 Mi de caracteres de JSON; un millón de registros; 100 campos distintos; nombres de campo de 128 caracteres; identificadores de 256; valores, notas, entradas y textos editables de 16000; 262144 caracteres acumulados por registro; tokens serializados de 65536 caracteres. Diario en páginas de 25 entradas. Adjuntos de hasta 4 MiB cada uno, 16 MiB en total y 200 documentos; los blobs SQLite se leen por fragmentos. Los textos más largos y los archivos binarios se conservan como adjuntos sin edición.
+**Limitaciones iniciales:** el identificador se busca preferentemente por una cabecera equivalente a `MATRÍCULA`; si no existe, se exige un campo identificador configurado. Las búsquedas continúan siendo exactas. Si la exportación real usa una estructura distinta, será necesario ajustar el mapeo tras revisar una muestra anonimizada. Se admiten archivos `.csv`, `.csv.gz`, `.tsv` y `.txt`; los libros `.xls`/`.xlsx` no se interpretan directamente hasta validar la estructura real del fichero. Los históricos se conservan y siguen apareciendo en búsquedas exactas, sin marcarse aún como inactivos.
+
+En GRID MT se extrae un conjunto amplio de columnas técnicas (nombre, localización, equipos, IP LAN/WAN/TC, etc.) y se excluyen los encabezados de contraseñas. Las columnas no seleccionadas no se copian a SQLite. La base SQLite conserva internamente el payload de registros y el formato de copias cifradas anteriores. **Esto no exige archivos JSON al técnico** ni modifica el formato `.acpb`.
+
+El importador muestra registros leídos y CT de las zonas seleccionadas. Si el proveedor informa del tamaño, muestra bytes leídos del archivo original (comprimidos en GZIP), sin confundirlos con porcentaje de análisis. Al actualizar muestra CT procesados/total de la vista previa. La interfaz recibe como máximo una actualización cada 150 ms, además de los límites de fase. **CANCELAR OPERACIÓN** solicita cancelación al lector Java, cierra el stream fuera del hilo principal y revierte todas las escrituras antes de recuperar los controles. Una vez iniciada la confirmación atómica de SQLite ya no se acepta cancelación. El tamaño desconocido se informa sin inventar porcentajes.
+
+Arquitectura, conservación, campos excluidos y mediciones reproducibles: [auditoría del importador](docs/GRID-MT-IMPORT-AUDIT.md).
+
+Límites: hasta 160 Mi caracteres del CSV descomprimido; un millón de registros elegibles; 128 campos almacenados; cabeceras de 128 caracteres; identificadores de 256; celdas de 16000 y registros de 262144. Adjuntos de hasta 4 MiB cada uno y 16 MiB en total.
 
 ## Documentos y OCR
 
@@ -33,7 +39,7 @@ OCR requiere importar un modelo con licencia adecuada (hasta 64 MiB). Se valida 
 
 La copia `.acpb` contiene catálogo, campos visibles, notas, diario y adjuntos. Cifrado AES-256-GCM, sal aleatoria de 16 bytes, nonce de 12 bytes, autenticación de 128 bits y clave derivada con PBKDF2-HMAC-SHA256 (210000 iteraciones). Contraseña de 12 a 256 caracteres: no se almacena ni se puede recuperar. Cada exportación genera sal y nonce nuevos. No utiliza certificados ni claves de otras apps.
 
-Restaurar pide confirmación, comprueba la etiqueta de autenticación completa en un archivo temporal privado y solo entonces valida/aplica el contenido en una transacción SQLite. Contraseña incorrecta, alteración, truncamiento o esquema inválido dejan intactos los datos existentes. El temporal se elimina al finalizar. El límite del contenido descifrado es 64 MiB. Una exportación fallida puede dejar un archivo parcial: elimínalo y repite tras corregir el problema. Guarda la contraseña separada de la copia. Tema y modelo OCR no se incluyen. No restaura copias privadas ni de otras aplicaciones.
+Restaurar pide confirmación, comprueba la etiqueta de autenticación completa en un archivo temporal privado y solo entonces valida/aplica el contenido en una transacción SQLite. Contraseña incorrecta, alteración, truncamiento o esquema inválido dejan intactos los datos existentes. El temporal se elimina al finalizar. El límite del contenido descifrado es 128 MiB. Una exportación fallida puede dejar un archivo parcial: elimínalo y repite tras corregir el problema. Guarda la contraseña separada de la copia. Tema y modelo OCR no se incluyen. No restaura copias privadas ni de otras aplicaciones.
 
 ## Validación y distribución
 

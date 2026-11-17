@@ -3,7 +3,20 @@ android {
     namespace 'com.josxtm.autocontrol.community.storage'
     compileSdk 35
     defaultConfig { minSdk 26 }
+    sourceSets { test.java.srcDir 'src/sharedTest/java' }
+    testOptions { unitTests.includeAndroidResources = true }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
-dependencies { testImplementation 'junit:junit:4.13.2' }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
+android.testOptions.unitTests.all {
+    systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+    ['https.proxyHost', 'https.proxyPort', 'http.proxyHost', 'http.proxyPort', 'javax.net.ssl.trustStore'].each { key ->
+        if (System.getProperty(key)) systemProperty key, System.getProperty(key)
+    }
+    maxHeapSize = '2g'
+    testLogging { showStandardStreams = true }
+}

@@ -52,6 +52,115 @@ public final class WorkspaceStoreTest extends TestCase {
         store.importCatalog(new StringReader("[{\"code\":\"SYN-NEW\"}]"), "code");
         assertNull(store.find("SYN-001")); assertEquals("", store.note("SYN-001")); assertEquals(1, store.journal(Long.MAX_VALUE).size());
     }
+
+    public void testEsirCsvPreviewAndMonthlyRefreshKeepNotesAndHistoricalCt() throws Exception {
+        store.importCatalog(new StringReader(
+            "[{\"MATRÍCULA\":\"28-SYN-001\",\"IP LAN\":\"Synthetic-network-old\",\"LOCAL\":\"keep\"}," +
+            "{\"MATRÍCULA\":\"45-SYN-OLD\",\"IP LAN\":\"Synthetic-network-legacy\"}]"), "MATRÍCULA");
+        store.saveNote("28-SYN-001", "Nota de campo");
+        store.saveNote("45-SYN-OLD", "Nota histórica");
+        store.addJournal("Diario independiente");
+        String before = backup();
+        String csv = "\uFEFFMATRICULA [BDI];IP LAN [EDIT];NOMBRE [BDI];CONTRASEÑAS GCT [EDIT]\r\n" +
+            "28-SYN-001;Synthetic-network-new;\"CT; actualizado\";synthetic-untrusted\r\n" +
+            "82-SYN-NEW;Synthetic-network-added;Centro nuevo;synthetic-untrusted\r\n" +
+            "13-SYN-EXCLUDED;Synthetic-excluded;Centro omitido;synthetic-untrusted\r\n";
+        WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
+        assertEquals(before, backup());
+        assertEquals(2, preview.rows);
+        assertEquals(1, preview.added);
+        assertEquals(1, preview.changed);
+        assertEquals(1, preview.retained);
+        WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, applied.added);
+        assertEquals("Synthetic-network-new", store.find("28-SYN-001").get("IP LAN"));
+        assertEquals("CT; actualizado", store.find("28-SYN-001").get("NOMBRE"));
+        assertEquals("keep", store.find("28-SYN-001").get("LOCAL"));
+        assertEquals("Nota de campo", store.note("28-SYN-001"));
+        assertNotNull(store.find("45-SYN-OLD"));
+        assertEquals("Nota histórica", store.note("45-SYN-OLD"));
+        assertNotNull(store.find("82-SYN-NEW"));
+        assertNull(store.find("13-SYN-EXCLUDED"));
+        assertFalse(store.find("28-SYN-001").containsKey("CONTRASEÑAS GCT"));
+        assertEquals("MATRÍCULA", store.setting("identifier"));
+        assertEquals(1, store.journal(Long.MAX_VALUE).size());
+        String after = backup();
+        store.restore(new StringReader(after));
+        assertEquals(after, backup());
+        WorkspaceStore.CsvUpdate repeated = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(0, repeated.changed);
+        assertEquals(2, repeated.unchanged);
+    }
+
+    public void testEsirCsvErrorsRollbackWithoutDeletingNotes() throws Exception {
+        store.importCatalog(new StringReader("[{\"MATRÍCULA\":\"28-SYN-001\",\"IP LAN\":\"Synthetic-network-old\"}]"), "MATRÍCULA");
+        store.saveNote("28-SYN-001", "Nota conservada");
+        String before = backup();
+        String[] invalid = {
+            "MATRICULA;IP LAN\n28-SYN-X;Synthetic-network-a\n28-SYN-X;Synthetic-network-b\n",
+            "MATRICULA;IP LAN\n28-SYN-X;Synthetic-network-a\n28-SYN-BROKEN\n",
+            "MATRICULA;IP LAN\n28-SYN-X;\"comillas sin cerrar",
+            "IP LAN;NOMBRE\nSynthetic-network-c;Sin matrícula\n",
+            "MATRICULA;IP LAN\n;Synthetic-network-a\n"
+        };
+        for (String csv : invalid) {
+            try { store.updateCsvCatalog(new StringReader(csv), "id", true); fail("CSV inválido aceptado"); }
+            catch (java.io.IOException expected) { }
+            assertEquals(before, backup());
+            assertEquals("Nota conservada", store.note("28-SYN-001"));
+        }
+    }
+
+    public void testCsvCommaSeparatedQuotedFields() throws Exception {
+        String csv = "MATRÍCULA,IP LAN,NOMBRE\r\n28-SYN-001,Synthetic-network-old,\"Prueba, norte\"\r\n";
+        WorkspaceStore.CsvUpdate summary = store.updateCsvCatalog(new StringReader(csv), "id", true);
+        assertEquals(1, summary.added);
+        assertEquals("Prueba, norte", store.find("28-SYN-001").get("NOMBRE"));
+    }
+
+
+    public void testSelectablePrefixScopeKeepsOtherZonesUntouched() throws Exception {
+        String csv = "MATRICULA [BDI];IP LAN [EDIT];NOMBRE [BDI]\n" +
+                "28-SYN-A;synthetic-a;Madrid\n" +
+                "45-SYN-B;synthetic-b;Toledo\n" +
+                "82-SYN-C;synthetic-c;Otros\n" +
+                "13-SYN-D;synthetic-d;No autorizado\n";
+        java.util.Set<String> only45 = new java.util.HashSet<>();
+        only45.add("45");
+        String before = backup();
+        WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false, only45);
+        assertEquals(1, preview.rows);
+        assertEquals(1, preview.added);
+        assertEquals(before, backup());
+
+        WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true, only45);
+        assertEquals(1, applied.rows);
+        assertNotNull(store.find("45-SYN-B"));
+        store.saveNote("45-SYN-B", "Nota conservada 45");
+        assertNull(store.find("28-SYN-A"));
+        assertNull(store.find("82-SYN-C"));
+        assertNull(store.find("13-SYN-D"));
+
+        java.util.Set<String> only28And82 = new java.util.HashSet<>();
+        only28And82.add("28"); only28And82.add("82");
+        WorkspaceStore.CsvUpdate second = store.updateCsvCatalog(
+                new StringReader(csv), "id", true, only28And82);
+        assertEquals(2, second.rows);
+        assertEquals(2, second.added);
+        assertNotNull(store.find("28-SYN-A"));
+        assertNotNull(store.find("82-SYN-C"));
+        assertEquals("Nota conservada 45", store.note("45-SYN-B"));
+        assertEquals("synthetic-b", store.find("45-SYN-B").get("IP LAN"));
+        assertNull(store.find("13-SYN-D"));
+
+        String snapshot = backup();
+        try {
+            store.updateCsvCatalog(new StringReader(csv), "id", true, java.util.Collections.emptySet());
+            fail("No se debe permitir ninguna zona seleccionada");
+        } catch (java.io.IOException expected) { }
+        assertEquals(snapshot, backup());
+    }
+
     public void testBackupRestoreRoundTripAndReopen() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note\nα"); store.addJournal("Synthetic diary");
         store.setting("visible", "{\"label\":\"\"}"); String snapshot = backup();
@@ -89,7 +198,7 @@ public final class WorkspaceStoreTest extends TestCase {
         catalog(); rejected("[{\"code\":\"" + "x".repeat(257) + "\"}]");
         rejected("[{\"code\":\"SYN-X\",\"body\":\"" + "x".repeat(70000) + "\"}]");
         StringBuilder fields = new StringBuilder("[{\"code\":\"SYN-X\"");
-        for (int i = 0; i < 101; i++) fields.append(",\"synthetic").append(i).append("\":0");
+        for (int i = 0; i < 129; i++) fields.append(",\"synthetic").append(i).append("\":0");
         rejected(fields.append("}]").toString());
     }
     public void testInputFailureRollsBackAndCanContinue() throws Exception {

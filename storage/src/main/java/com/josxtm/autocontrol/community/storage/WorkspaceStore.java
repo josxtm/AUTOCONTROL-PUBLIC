@@ -81,6 +81,168 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
             return count;
         } finally { db.endTransaction(); }
     }
+
+    /** A monthly CSV refresh preserves all existing records and their linked notes. */
+    public static final class CsvUpdate {
+        public final int rows, added, changed, unchanged, retained;
+        public final String identifier;
+        CsvUpdate(int rows, int added, int changed, int unchanged, int retained, String identifier) {
+            this.rows = rows; this.added = added; this.changed = changed;
+            this.unchanged = unchanged; this.retained = retained; this.identifier = identifier;
+        }
+    }
+
+    public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply) throws IOException {
+        return updateCsvCatalog(reader, preferredField, apply, CsvCatalog.defaultPrefixes());
+    }
+
+    public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply,
+                                                    Set<String> selectedPrefixes) throws IOException {
+        return updateCsvCatalog(reader, preferredField, apply, selectedPrefixes, new CsvOperation());
+    }
+
+    public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply,
+            Set<String> selectedPrefixes, CsvOperation operation) throws IOException {
+        final Set<String> prefixes = CsvCatalog.checkedPrefixes(selectedPrefixes);
+        operation.check();
+        SQLiteDatabase db = getReadableDatabase();
+        CsvRefresh refresh = new CsvRefresh(db, apply, prefixes, operation);
+        // Preview never starts a write transaction, creates a table, or writes metadata.
+        if (apply) db.beginTransaction();
+        Throwable failure = null;
+        try {
+            CsvCatalog.Parsed parsed = CsvCatalog.read(reader, preferredField, prefixes, operation,
+                    (row, fromField) -> refresh.accept(row, fromField));
+            refresh.flush();
+            operation.verifyRows(parsed.count);
+            if (apply) {
+                storeFields(db, refresh.allFields);
+                meta(db, "identifier", refresh.targetField);
+                operation.commit(db::setTransactionSuccessful);
+            }
+            operation.publish(true);
+            return new CsvUpdate(parsed.count, refresh.stats[0], refresh.stats[1], refresh.stats[2],
+                    refresh.existingInScope - refresh.existingSeen, refresh.targetField);
+        } catch (IOException | RuntimeException | Error error) {
+            failure = error;
+            throw error;
+        } finally {
+            try { refresh.close(); } finally {
+                try { if (apply) db.endTransaction(); }
+                catch (RuntimeException cleanup) {
+                    // SQLITE_FULL can already have rolled SQLite back. Preserve the original
+                    // failure instead of replacing it with "no transaction is active".
+                    if (failure == null) throw cleanup;
+                    failure.addSuppressed(cleanup);
+                }
+            }
+        }
+    }
+
+    /** Bounded payload batches and reusable prepared writers; only matrícula IDs survive the stream. */
+    private final class CsvRefresh implements java.io.Closeable {
+        private static final int BATCH = 128; // below SQLite's parameter limit; <=32 MiB payload worst case
+        final SQLiteDatabase db;
+        final boolean apply;
+        final CsvOperation operation;
+        final Set<String> seen = new java.util.HashSet<>();
+        final List<LinkedHashMap<String, String>> pending = new ArrayList<>(BATCH);
+        final LinkedHashMap<String, String> canonical = new LinkedHashMap<>();
+        final java.util.Map<String, String> normalized = new java.util.HashMap<>();
+        final java.util.Map<String, Boolean> sensitive = new java.util.HashMap<>();
+        final Set<String> allFields;
+        final int[] stats = new int[3];
+        final int existingInScope;
+        int existingSeen;
+        String targetField;
+        GridMtColumns.Projection projection;
+        android.database.sqlite.SQLiteStatement inserter, updater;
+        CsvRefresh(SQLiteDatabase db, boolean apply, Set<String> prefixes, CsvOperation operation) throws IOException {
+            this.db = db; this.apply = apply; this.operation = operation;
+            allFields = new LinkedHashSet<>(fields());
+            for (String field : allFields) canonical.put(norm(field), field);
+            String old = setting("identifier");
+            if (!old.isEmpty() && !CsvCatalog.normalized(GridMtColumns.base(old)).equals("MATRICULA")) {
+                try (Cursor c = db.rawQuery("SELECT 1 FROM records LIMIT 1", null)) {
+                    if (c.moveToFirst()) throw new IOException("El campo identificador cambió. Requiere migración controlada.");
+                }
+            }
+            targetField = old.isEmpty() ? "MATRÍCULA" : old;
+            canonical.put(norm("MATRÍCULA"), targetField);
+            StringBuilder where = new StringBuilder();
+            List<String> args = new ArrayList<>();
+            for (String prefix : prefixes) {
+                if (where.length() > 0) where.append(" OR ");
+                where.append("(id >= ? AND id < ?)");
+                args.add(prefix); args.add(Integer.toString(Integer.parseInt(prefix) + 1));
+            }
+            try (Cursor c = db.rawQuery("SELECT count(*) FROM records WHERE " + where, args.toArray(new String[0]))) {
+                c.moveToFirst(); existingInScope = c.getInt(0);
+            }
+        }
+        String norm(String key) { return normalized.computeIfAbsent(key, CsvCatalog::normalized); }
+        void accept(LinkedHashMap<String, String> raw, String fromField) throws IOException {
+            operation.check();
+            String id = raw.get(fromField);
+            if (!seen.add(id)) throw new IOException("Matrícula duplicada en el CSV.");
+            if (projection == null) projection = new GridMtColumns.Projection(raw.keySet());
+            LinkedHashMap<String, String> incoming = new LinkedHashMap<>();
+            for (java.util.Map.Entry<String, String> entry : projection.apply(raw).entrySet())
+                incoming.put(canonical.getOrDefault(norm(entry.getKey()), entry.getKey()), entry.getValue());
+            incoming.put(targetField, id);
+            pending.add(incoming);
+            if (pending.size() == BATCH) flush();
+        }
+        void flush() throws IOException {
+            if (pending.isEmpty()) return;
+            operation.check();
+            String[] ids = new String[pending.size()];
+            for (int i = 0; i < ids.length; i++) ids[i] = pending.get(i).get(targetField);
+            String slots = String.join(",", java.util.Collections.nCopies(ids.length, "?"));
+            java.util.Map<String, String> current = new java.util.HashMap<>();
+            try (Cursor c = db.rawQuery("SELECT id,payload FROM records WHERE id IN (" + slots + ")", ids)) {
+                while (c.moveToNext()) { operation.check(); current.put(c.getString(0), c.getString(1)); }
+            }
+            for (LinkedHashMap<String, String> incoming : pending) {
+                operation.check();
+                String id = incoming.get(targetField), payload = current.get(id);
+                LinkedHashMap<String, String> previous = payload == null ? null : JsonCodec.decode(payload);
+                LinkedHashMap<String, String> merged = previous == null ? new LinkedHashMap<>() : new LinkedHashMap<>(previous);
+                Set<String> columns = new java.util.HashSet<>();
+                for (String key : incoming.keySet()) columns.add(norm(key));
+                merged.keySet().removeIf(key -> columns.contains(norm(key)) || sensitive.computeIfAbsent(key, GridMtColumns::sensitive));
+                merged.putAll(incoming);
+                if (merged.size() > JsonCodec.MAX_FIELDS) throw JsonCodec.invalid();
+                int total = 0;
+                for (java.util.Map.Entry<String, String> entry : merged.entrySet()) {
+                    total += entry.getKey().length() + (entry.getValue() == null ? 0 : entry.getValue().length());
+                    if (total > 262144) throw JsonCodec.invalid();
+                }
+                allFields.addAll(merged.keySet());
+                if (allFields.size() > JsonCodec.MAX_FIELDS) throw JsonCodec.invalid();
+                boolean changed = previous != null && !previous.equals(merged);
+                if (previous == null) stats[0]++;
+                else { existingSeen++; stats[changed ? 1 : 2]++; }
+                if (apply && (previous == null || changed)) {
+                    // UPDATE in place: REPLACE would cascade-delete linked notes. Works on API 26 SQLite.
+                    if (inserter == null) {
+                        inserter = db.compileStatement("INSERT INTO records(payload,id) VALUES (?,?)");
+                        updater = db.compileStatement("UPDATE records SET payload=? WHERE id=?");
+                    }
+                    android.database.sqlite.SQLiteStatement writer = previous == null ? inserter : updater;
+                    writer.bindString(1, JsonCodec.encode(merged)); writer.bindString(2, id);
+                    writer.execute(); writer.clearBindings();
+                }
+                operation.processed();
+            }
+            pending.clear();
+        }
+        @Override public void close() {
+            if (inserter != null) inserter.close();
+            if (updater != null) updater.close();
+        }
+    }
+
     public synchronized List<String> fields() throws IOException {
         String value = setting("fields");
         return value.isEmpty() ? new ArrayList<>() : new ArrayList<>(JsonCodec.decode(value).keySet());

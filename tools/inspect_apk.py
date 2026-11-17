@@ -11,6 +11,15 @@ import zipfile
 from privacy_guard import check
 
 
+def reviewed_dex_literal(value):
+    # Public JSch format markers are not key material. Allow ONLY whole constants:
+    # appending a body, another line, an address, or a token must still be inspected.
+    markers = {"-" * 5 + "BEGIN " + kind + " PRIVATE KEY" + "-" * 5
+               for kind in ("RSA", "DSA", "EC", "OPENSSH")}
+    loopbacks = {".".join(parts) for parts in (("0", "0", "0", "0"), ("127", "0", "0", "1"))}
+    return value in markers or value in loopbacks
+
+
 def inspect(apk, build_tools):
     apk = Path(apk)
     tools = Path(build_tools)
@@ -61,7 +70,9 @@ def inspect(apk, build_tools):
                         if byte < 128:
                             break
                     end = data.index(b"\0", offset)
-                    dex_strings.append(data[offset:end].decode("utf-8", errors="replace"))
+                    constant = data[offset:end].decode("utf-8", errors="replace")
+                    if not reviewed_dex_literal(constant):
+                        dex_strings.append(constant)
                 dex_containers.append(dex_strings)
                 dex_strings = []
     resources = run("aapt", "dump", "resources", apk)
