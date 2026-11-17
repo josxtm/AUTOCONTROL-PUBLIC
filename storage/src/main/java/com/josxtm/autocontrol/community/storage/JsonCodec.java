@@ -13,7 +13,7 @@ import java.util.Map;
 
 /** Strict, bounded, scalar JSON records. No imported values enter logs or exceptions. */
 final class JsonCodec {
-    static final int MAX_FIELDS = 100;
+    static final int MAX_FIELDS = 128;
     static final int MAX_TEXT = 16000;
     static JsonReader reader(Reader source) {
         return new JsonReader(new FilterReader(source) {
@@ -24,7 +24,7 @@ final class JsonCodec {
                 int count = super.read(buffer, offset, length);
                 for (int i = offset; i < offset + Math.max(count, 0); i++) {
                     char c = buffer[i];
-                    if (++total > 64L * 1024 * 1024) throw invalid();
+                    if (++total > 128L * 1024 * 1024) throw invalid();
                     if (quoted) {
                         if (++run > 65536) throw invalid();
                         if (escaped) escaped = false;
