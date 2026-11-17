@@ -29,7 +29,7 @@ public final class CsvCatalog {
         }
     }
 
-    private static final int MAX_CHARS = 64 * 1024 * 1024;
+    private static final int MAX_CHARS = 160 * 1024 * 1024; // Real GRID MT CSV is larger than 64 MiB
     private static final int MAX_CELL = JsonCodec.MAX_TEXT;
     private static final int MAX_HEADER = 262144;
 
@@ -64,7 +64,7 @@ public final class CsvCatalog {
         // GRID MT is keyed by matrícula: do not silently use the row number or a changing address.
         for (String header : names) {
             String name = normalized(header);
-            if (name.equals("MATRICULA") || name.equals("MATRICULACT")
+            if (name.equals("MATRICULA") || name.equals("MATRICULABDI") || name.equals("MATRICULACT")
                     || name.equals("MATRICULACENTRO") || name.equals("MATRICULACENTROTRANSFORMACION")) {
                 selected = header; break;
             }
@@ -96,7 +96,7 @@ public final class CsvCatalog {
             buffered.reset();
             Rows parser = new Rows(buffered, sep);
             List<String> headers = parser.next();
-            if (headers == null || headers.size() < 2 || headers.size() > JsonCodec.MAX_FIELDS)
+            if (headers == null || headers.size() < 2 || headers.size() > 600)
                 throw new IOException("Cabecera CSV inválida.");
             headers.set(0, headers.get(0).replace("\uFEFF", ""));
             Set<String> unique = new HashSet<>();
