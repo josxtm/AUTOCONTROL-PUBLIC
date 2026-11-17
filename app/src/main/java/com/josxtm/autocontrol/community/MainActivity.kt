@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
             }
             if (tab == 4) {
                 // The active SSH session must not be disposed by LazyColumn virtualization.
-                SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan)
+                SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan, selectedRecord = m.record)
             } else {
             LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }

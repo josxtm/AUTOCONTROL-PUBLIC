@@ -1,23 +1,9 @@
 package com.josxtm.autocontrol.community.sniffer;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /** Pure IPv4 helper. Addresses are supplied at runtime, never embedded in the APK. */
 public final class LanTargets {
     private LanTargets() {}
-    public static final Map<String, Integer> OFFSETS;
-    static {
-        LinkedHashMap<String,Integer> offsets = new LinkedHashMap<>();
-        offsets.put("Router", 1);
-        offsets.put("CC T1", 2);
-        offsets.put("CC T2", 3);
-        offsets.put("SABT T2", 9);
-        offsets.put("SABT T1", 11);
-        offsets.put("FFAA1", 13);
-        offsets.put("Remota", 14);
-        OFFSETS = java.util.Collections.unmodifiableMap(offsets);
-    }
     private static long parse(String ip) {
         if (ip == null || !ip.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}")) throw new IllegalArgumentException("IPv4 inválida");
         String[] parts = ip.split("\\.");
@@ -42,5 +28,4 @@ public final class LanTargets {
         if (offset >= max) throw new IllegalArgumentException("Equipo fuera del rango de hosts");
         return format(network + offset);
     }
-    public static String at(String base, int offset) { return at(base, 24, offset); }
 }

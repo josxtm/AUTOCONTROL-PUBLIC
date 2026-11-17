@@ -26,16 +26,23 @@ public final class DiagnosticResult {
             case VALID_RESPONSE: return "Respuesta válida";
             case NO_RESPONSE: return "Sin respuesta observada";
             case TIMEOUT: return "Tiempo total agotado";
-            case SSH_ERROR: return "Error SSH / comando remoto";
+            case SSH_ERROR: return "Error de conexión o canal SSH";
+            case COMMAND_NOT_FOUND: return "Comando no disponible en el Mango";
+            case COMMAND_ERROR: return "El comando terminó con error";
+            case UNKNOWN_EXIT_STATUS: return "Finalización SSH sin código de salida";
+            case UNKNOWN: return "Sin comprobar";
+            case OUTPUT_LIMIT: return "Salida de comando truncada por límite";
             case LOCAL_ERROR: return "Error local";
             case INVALID_TARGET: return "Destino no válido";
-            case NOT_CONFIGURED: return "No configurado";
+            case NOT_CONFIGURED: return "No instalado";
             default: return "Cancelado";
         }
     }
     static DiagnosticStatus exitStatus(boolean ping, int code, boolean stderr) {
         if (code == 0) return DiagnosticStatus.VALID_RESPONSE;
-        if (ping && code == 1 && !stderr) return DiagnosticStatus.NO_RESPONSE;
-        return DiagnosticStatus.SSH_ERROR;
+        if (code < 0) return DiagnosticStatus.UNKNOWN_EXIT_STATUS;
+        if (code == 127) return DiagnosticStatus.COMMAND_NOT_FOUND;
+        if (ping && code == 1) return DiagnosticStatus.NO_RESPONSE;
+        return DiagnosticStatus.COMMAND_ERROR;
     }
 }

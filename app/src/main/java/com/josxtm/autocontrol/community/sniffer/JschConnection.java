@@ -40,7 +40,7 @@ final class JschConnection implements SshTransport.Connection {
     public void connect(int timeout)throws JSchException{session.connect(timeout);}
     public boolean connected(){return !closed.get()&&session.isConnected();}
     public CommandRunner.Channel exec(String command)throws Exception{
-        ChannelExec channel=(ChannelExec)session.openChannel("exec");channel.setCommand(command);channel.setInputStream(null);
+        ChannelExec channel=(ChannelExec)session.openChannel("exec");channel.setCommand(command);channel.setPty(false);channel.setInputStream(null);
         AtomicBoolean released=new AtomicBoolean();
         return new CommandRunner.Channel(){
             public InputStream stdout()throws IOException{return channel.getInputStream();}

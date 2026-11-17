@@ -28,7 +28,10 @@ public class SshTransportIntegrationTest {
         public void start(ChannelSession channel,Environment environment)throws IOException{
             destroyed.add(closed);
             out.write((name.equals("whoami")?"synthetic-user\n":"partial\n").getBytes(StandardCharsets.UTF_8));out.flush();
-            if(name.equals("whoami"))exit.onExit(0);
+            if(name.equals("whoami")||name.equals("id"))exit.onExit(0);
+            if(name.equals("date"))exit.onExit(127);
+            if(name.equals("df -h"))exit.onExit(2);
+            if(name.startsWith("ping "))exit.onExit(1);
             // Other allowlisted commands intentionally produce no EOF.
         }
         public void destroy(ChannelSession channel){closed.countDown();}
@@ -80,6 +83,17 @@ public class SshTransportIntegrationTest {
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(2);
         while(readerAlive()&&System.nanoTime()<deadline)Thread.sleep(10);
         assertFalse("Terminal reader left running",readerAlive());
+    }
+    @Test(timeout=20000) public void busyboxExecWorksWithAndWithoutInteractiveShell()throws Exception {
+        connect();
+        assertEquals(DiagnosticStatus.VALID_RESPONSE,client.diagnostic("id",3000,new CancellationToken(),null).status);
+        assertFalse(client.shellConnected());
+        client.openShell(text -> {});assertTrue(client.shellConnected());
+        assertEquals(DiagnosticStatus.VALID_RESPONSE,client.diagnostic("id",3000,new CancellationToken(),null).status);
+        assertEquals(DiagnosticStatus.COMMAND_NOT_FOUND,client.diagnostic("date",3000,new CancellationToken(),null).status);
+        assertEquals(DiagnosticStatus.COMMAND_ERROR,client.diagnostic("df -h",3000,new CancellationToken(),null).status);
+        assertEquals(DiagnosticStatus.NO_RESPONSE,client.diagnostic("ping -c 1 -W 2 "+String.join(".","192","0","2","7"),3000,new CancellationToken(),null).status);
+        assertTrue(client.connected());
     }
     private boolean readerAlive(){return Thread.getAllStackTraces().keySet().stream().anyMatch(t->t.isAlive()&&t.getName().equals("public-ssh-terminal-reader"));}
 }
