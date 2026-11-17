@@ -97,7 +97,27 @@ class MainActivity : ComponentActivity() {
                 item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }
                 item { Text("Edición independiente · trabajo local sin conexión") }
                 item { Text("Tema: " + autoThemes[m.tabletTheme].name, style = MaterialTheme.typography.labelSmall) }
-                item { Text(m.message, style = MaterialTheme.typography.bodyMedium); if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                item {
+                    Text(m.message, style = MaterialTheme.typography.bodyMedium)
+                    val progress = m.csvProgress
+                    if (progress != null) {
+                        Text("Registros leídos: ${progress.read} · CT de zonas seleccionadas: ${progress.selected}")
+                        if (progress.writing && progress.total > 0) {
+                            val fraction = (progress.processed.toFloat() / progress.total).coerceIn(0f, 1f)
+                            Text("CT procesados: ${progress.processed} / ${progress.total} · ${(fraction * 100).toInt()}% · pendiente de confirmar la transacción")
+                            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                        } else if (progress.size > 0) {
+                            val fraction = (progress.bytes.toFloat() / progress.size).coerceIn(0f, 1f)
+                            Text("Bytes leídos: ${progress.bytes} / ${progress.size} · ${(fraction * 100).toInt()}% (lectura del archivo; el análisis puede continuar)")
+                            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                        } else {
+                            Text("El proveedor no informa del tamaño. El avance se muestra por registros.")
+                        }
+                        Button(onClick = m::cancelCsv, enabled = !m.csvCancelling) {
+                            Text(if (m.csvCancelling) "Cancelando y cerrando la operación…" else "CANCELAR OPERACIÓN")
+                        }
+                    } else if (m.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
                 when (tab) {
                     0 -> {
                         item { Text("GRID MT · eSir", style = MaterialTheme.typography.titleLarge) }

@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.josxtm.autocontrol.community.storage.CsvOperation
 import com.josxtm.autocontrol.community.storage.WorkspaceStore
 import com.josxtm.autocontrol.community.storage.PortableBackup
 import com.josxtm.autocontrol.community.documents.DocumentEngine
@@ -46,6 +47,60 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
             key == "IP LAN" || key == "IP_LAN"
         }?.value?.trim()?.takeIf { it.isNotEmpty() }
 
+    var csvProgress by mutableStateOf<CsvOperation.Progress?>(null); private set
+    var csvCancelling by mutableStateOf(false); private set
+    private var csvOperation: CsvOperation? = null
+    private val csvHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    fun cancelCsv() {
+        val operation = csvOperation ?: return
+        csvCancelling = true
+        operation.cancel() // Sets Java's token immediately; closes active stream on a separate worker.
+    }
+    private fun <T> csvTask(writing: Boolean, total: Long, work: (CsvOperation) -> T, apply: (T) -> Unit) {
+        if (busy) return
+        busy = true; csvCancelling = false
+        lateinit var operation: CsvOperation
+        operation = CsvOperation { progress ->
+            csvHandler.post { if (csvOperation === operation) csvProgress = progress }
+        }
+        csvOperation = operation
+        operation.start(writing, total, -1)
+        message = if (writing) "Actualizando base de datos…" else "Leyendo archivo Grid MT…"
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { work(operation) }
+                operation.check()
+                if (csvOperation === operation) apply(result)
+            } catch (error: Exception) {
+                if (csvOperation === operation) message = csvError(error, operation)
+            } finally {
+                if (csvOperation === operation) {
+                    csvOperation = null; csvProgress = null; csvCancelling = false; busy = false
+                }
+            }
+        }
+    }
+    private fun csvError(error: Exception, operation: CsvOperation): String {
+        if (operation.isCancelled || error is CsvOperation.Cancelled)
+            return "Operación cancelada. Datos anteriores conservados."
+        val reason = when (error) {
+            is SecurityException, is java.io.FileNotFoundException -> "No se puede acceder al documento. Revisa sus permisos y vuelve a seleccionarlo."
+            is java.util.zip.ZipException, is java.io.EOFException -> "El archivo GZIP está corrupto o incompleto. Descárgalo de nuevo."
+            is android.database.sqlite.SQLiteFullException -> "No hay espacio suficiente para actualizar la base de datos."
+            is android.database.sqlite.SQLiteException -> "Error de base de datos durante la actualización."
+            is IOException -> when {
+                error.message?.contains("cambió desde la vista previa") == true -> "El archivo cambió desde la vista previa. Selecciónalo de nuevo."
+                error.message?.contains("duplicada en el CSV") == true -> "El archivo contiene matrículas duplicadas."
+                error.message?.contains("cabecera", ignoreCase = true) == true ||
+                    error.message?.contains("MATRICULA") == true -> "Cabeceras incompatibles o estructura CSV incorrecta. Revisa el Grid MT original."
+                error.message?.contains("GZIP") == true -> "El archivo CSV.GZ no contiene un GZIP válido."
+                error.message?.contains("zonas seleccionadas") == true -> "El archivo no contiene CT de las zonas seleccionadas."
+                else -> "No se pudo leer el Grid MT. Revisa el formato, la estructura y el acceso al archivo."
+            }
+            else -> "No se pudo completar la importación. Revisa el archivo y el almacenamiento disponible."
+        }
+        return "$reason Los datos anteriores se conservan."
+    }
     var csvPreview by mutableStateOf<WorkspaceStore.CsvUpdate?>(null); private set
     private var csvCandidate: Uri? = null
     private var csvCandidatePrefixes: Set<String>? = null
@@ -131,31 +186,58 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         val before = if (reset) Long.MAX_VALUE else journal.lastOrNull()?.id ?: Long.MAX_VALUE
         task({ store.journal(before) }) { if (it.isEmpty()) message = "No hay más entradas." else journal = it }
     }
-    /** Preview is read-only: SQLite rolls the transaction back before showing changes. */
-    private fun csvFromUri(uri: Uri, apply: Boolean, prefixes: Set<String>): WorkspaceStore.CsvUpdate {
-        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
+    /** Streaming source. Preview only reads SQLite; apply writes one atomic transaction. */
+    private fun csvFromUri(uri: Uri, apply: Boolean, prefixes: Set<String>,
+                           operation: CsvOperation, field: String, expected: Long): WorkspaceStore.CsvUpdate {
+        operation.check()
+        var size = -1L
+        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) size = cursor.getLong(sizeColumn)
+                cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+            } else null
         }?.lowercase(java.util.Locale.ROOT)
         if (name != null && !(name.endsWith(".csv") || name.endsWith(".tsv") ||
                     name.endsWith(".txt") || name.endsWith(".csv.gz")))
             throw IOException("Selecciona el CSV o CSV.GZ original de eSir.")
         fun parse(charset: Charset): WorkspaceStore.CsvUpdate {
+            operation.start(apply, expected, size)
             return resolver.openInputStream(uri).use { raw ->
-                val input = BufferedInputStream(requireNotNull(raw), 8192)
-                input.mark(4)
-                val gzip = input.read() == 0x1f && input.read() == 0x8b
-                input.reset()
-                if (name?.endsWith(".csv.gz") == true && !gzip)
-                    throw IOException("El archivo .csv.gz no contiene datos GZIP.")
-                val source = if (gzip) GZIPInputStream(input, 8192) else input
-                InputStreamReader(source, charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)).use { reader ->
-                    store.updateCsvCatalog(reader, identifier, apply, prefixes)
+                val sourceFile = raw ?: throw java.io.FileNotFoundException()
+                operation.attach(sourceFile)
+                var consumed = 0L
+                val counted = object : java.io.FilterInputStream(sourceFile) {
+                    override fun read(): Int {
+                        operation.check()
+                        val value = sourceFile.read()
+                        if (value != -1) operation.bytes(++consumed)
+                        return value
+                    }
+                    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                        operation.check()
+                        val count = sourceFile.read(buffer, offset, length)
+                        if (count > 0) { consumed += count; operation.bytes(consumed) }
+                        return count
+                    }
                 }
+                try {
+                    val input = BufferedInputStream(counted, 32768)
+                    input.mark(4)
+                    val gzip = input.read() == 0x1f && input.read() == 0x8b
+                    input.reset()
+                    if (name?.endsWith(".csv.gz") == true && !gzip)
+                        throw IOException("El archivo .csv.gz no contiene datos GZIP.")
+                    val source = if (gzip) GZIPInputStream(input, 32768) else input
+                    InputStreamReader(source, charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)).use { reader ->
+                        store.updateCsvCatalog(reader, field, apply, prefixes, operation)
+                    }
+                } finally { operation.detach() }
             }
         }
         return try { parse(StandardCharsets.UTF_8) }
-        catch (_: CharacterCodingException) { parse(Charset.forName("windows-1252")) }
+        catch (_: CharacterCodingException) { operation.check(); parse(Charset.forName("windows-1252")) }
     }
     fun previewCsv(uri: Uri) {
         if (busy) return
@@ -164,8 +246,9 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
             message = "Marca al menos una zona: 28, 45 u 82."
             return
         }
+        val field = identifier
         csvCandidate = null; csvCandidatePrefixes = null; csvPreview = null
-        task({ csvFromUri(uri, false, selection) }) { summary ->
+        csvTask(false, 0, { csvFromUri(uri, false, selection, it, field, 0) }) { summary ->
             csvCandidate = uri
             csvCandidatePrefixes = selection
             csvPreview = summary
@@ -175,8 +258,10 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
     fun applyCsv() {
         val uri = csvCandidate ?: return
         val selection = csvCandidatePrefixes ?: return
-        task({
-            val result = csvFromUri(uri, true, selection)
+        val total = csvPreview?.rows?.toLong() ?: return
+        val field = identifier
+        csvTask(true, total, { operation ->
+            val result = csvFromUri(uri, true, selection, operation, field, total)
             Pair(result, snapshot())
         }) { (summary, newSnapshot) ->
             show(newSnapshot)
@@ -252,5 +337,10 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
             message = if (restore) "Copia autenticada y restaurada." else "Copia cifrada exportada. Conserva su contraseña fuera de la app."
         }
     }
-    override fun onCleared() { clearPassphrase(); Thread({ store.close() }, "public-store-close").start() }
+    override fun onCleared() {
+        csvOperation?.cancel()
+        clearPassphrase()
+        Thread({ store.close() }, "public-store-close").start()
+        super.onCleared()
+    }
 }

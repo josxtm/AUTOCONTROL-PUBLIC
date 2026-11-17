@@ -49,29 +49,39 @@ public final class GridMtColumns {
                 key.contains("TOKEN") || key.contains("APIKEY");
     }
 
-    public static LinkedHashMap<String, String> project(LinkedHashMap<String, String> source) {
-        LinkedHashMap<String, String> result = new LinkedHashMap<>();
-        for (java.util.Map.Entry<String, String> entry : source.entrySet()) {
-            String rawName = entry.getKey();
-            if (sensitive(rawName)) continue; // Never retain any password / secret field.
-            String key = normalizedBase(rawName);
-            if (!SELECTED.contains(key)) continue;
-            String name;
-            switch (key) {
-                case "MATRICULA": name = "MATRÍCULA"; break;
-                case "IPLAN": name = "IP LAN"; break;
-                case "IPWAN": name = "IP WAN"; break;
-                case "IPTC":
-                    name = rawName.toUpperCase(Locale.ROOT).contains("[CAL]") ? "IP TC (CAL)" : "IP TC";
-                    break;
-                case "CODIGO": name = "CÓDIGO BDI"; break;
-                case "TIPORFIS": name = "TIPO RFID"; break;
-                default: name = base(rawName);
+    /** Header work is compiled once, never once per cell/CT. */
+    public static final class Projection {
+        private final LinkedHashMap<String, String> names = new LinkedHashMap<>();
+        public Projection(Iterable<String> headers) {
+            Set<String> used = new HashSet<>();
+            for (String rawName : headers) {
+                if (sensitive(rawName)) continue;
+                String key = normalizedBase(rawName);
+                if (!SELECTED.contains(key)) continue;
+                String name;
+                switch (key) {
+                    case "MATRICULA": name = "MATRÍCULA"; break;
+                    case "IPLAN": name = "IP LAN"; break;
+                    case "IPWAN": name = "IP WAN"; break;
+                    case "IPTC":
+                        name = rawName.toUpperCase(Locale.ROOT).contains("[CAL]") ? "IP TC (CAL)" : "IP TC";
+                        break;
+                    case "CODIGO": name = "CÓDIGO BDI"; break;
+                    case "TIPORFIS": name = "TIPO RFID"; break;
+                    default: name = base(rawName);
+                }
+                if (used.add(name)) names.put(rawName, name);
             }
-            // Prefer the first occurrence for a duplicate label; never silently rename IDs.
-            result.putIfAbsent(name, entry.getValue());
         }
-        return result;
+        public LinkedHashMap<String, String> apply(java.util.Map<String, String> source) {
+            LinkedHashMap<String, String> result = new LinkedHashMap<>();
+            for (java.util.Map.Entry<String, String> name : names.entrySet())
+                result.put(name.getValue(), source.get(name.getKey()));
+            return result;
+        }
+    }
+    public static LinkedHashMap<String, String> project(LinkedHashMap<String, String> source) {
+        return new Projection(source.keySet()).apply(source);
     }
 
     private GridMtColumns() { }

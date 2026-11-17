@@ -2,7 +2,6 @@ package com.josxtm.autocontrol.community.storage;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.PushbackReader;
 import java.io.Reader;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -94,10 +93,16 @@ public final class CsvCatalog {
     }
 
     public static Parsed read(Reader source, String preferred, Set<String> selected, RowConsumer consumer) throws IOException {
+        return read(source, preferred, selected, new CsvOperation(), consumer);
+    }
+
+    public static Parsed read(Reader source, String preferred, Set<String> selected,
+                              CsvOperation operation, RowConsumer consumer) throws IOException {
         final Set<String> prefixes = checkedPrefixes(selected);
         Reader bounded = new Reader() {
             private int read;
             @Override public int read(char[] target, int offset, int length) throws IOException {
+                operation.check();
                 int count = source.read(target, offset, Math.min(length, Math.max(1, MAX_CHARS - read + 1)));
                 if (count > 0 && (read += count) > MAX_CHARS) throw new IOException("CSV demasiado grande.");
                 return count;
@@ -126,6 +131,7 @@ public final class CsvCatalog {
             String id = identifier(headers, preferred);
             int idColumn = headers.indexOf(id);
             int count = 0;
+            long rows = 0;
             List<String> cells;
             while ((cells = parser.next()) != null) {
                 if (cells.size() == 1 && cells.get(0).trim().isEmpty()) continue;
@@ -136,6 +142,7 @@ public final class CsvCatalog {
                 for (String prefix : prefixes) {
                     if (recordId.startsWith(prefix)) { selectedPrefix = true; break; }
                 }
+                operation.reading(++rows, count + (selectedPrefix ? 1 : 0));
                 if (!selectedPrefix) continue;
                 if (++count > WorkspaceStore.MAX_ROWS) throw new IOException("Límite de CT superado.");
                 LinkedHashMap<String, String> row = new LinkedHashMap<>();
@@ -152,36 +159,50 @@ public final class CsvCatalog {
                 consumer.onRow(row, id);
             }
             if (count == 0) throw new IOException("El GRID no contiene CT de las zonas seleccionadas.");
+            operation.publish(true);
             return new Parsed(id, count, headers);
         }
     }
 
     private static final class Rows {
-        private final PushbackReader input;
+        private final Reader input;
+        private final char[] buffer = new char[32768];
+        private int position, length, pushed = -1;
+        private int read() throws IOException {
+            if (pushed != -1) { int value = pushed; pushed = -1; return value; }
+            if (length == -1) return -1;
+            if (position == length) {
+                length = input.read(buffer); position = 0;
+                if (length == -1) return -1;
+            }
+            return buffer[position++];
+        }
+        private void unread(int value) { pushed = value; }
         private final char sep;
         private boolean finished;
-        Rows(Reader reader, char sep) { this.input = new PushbackReader(reader, 2); this.sep = sep; }
+        Rows(Reader reader, char sep) { this.input = reader; this.sep = sep; }
         List<String> next() throws IOException {
             if (finished) return null;
             List<String> result = new ArrayList<>();
             StringBuilder value = new StringBuilder();
             boolean quoted = false, afterQuote = false, started = false;
             int next;
-            while ((next = input.read()) != -1) {
+            while ((next = read()) != -1) {
                 char ch = (char) next; started = true;
                 if (quoted) {
                     if (ch == '"') {
-                        int other = input.read();
+                        int other = read();
                         if (other == '"') value.append('"');
-                        else { quoted = false; afterQuote = true; if (other != -1) input.unread(other); }
+                        else { quoted = false; afterQuote = true; if (other != -1) unread(other); }
                     } else value.append(ch);
                 } else if (ch == sep || ch == '\n' || ch == '\r') {
+                    if (result.size() >= 600) throw new IOException("Demasiadas columnas CSV.");
                     result.add(value.toString());
                     if (ch == sep) { value.setLength(0); afterQuote = false; }
                     else {
                         if (ch == '\r') {
-                            int other = input.read();
-                            if (other != '\n' && other != -1) input.unread(other);
+                            int other = read();
+                            if (other != '\n' && other != -1) unread(other);
                         }
                         return result;
                     }

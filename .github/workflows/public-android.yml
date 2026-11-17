@@ -75,6 +75,7 @@ jobs:
           path: |
             app/build/reports/
             storage/build/reports/
+            storage/build/test-results/
             documents/build/reports/
             app/build/outputs/androidTest-results/
           if-no-files-found: ignore
