@@ -167,7 +167,8 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
             });
             int retained;
             try (Cursor c = db.rawQuery(
-                    "SELECT count(*) FROM records WHERE id NOT IN (SELECT id FROM csv_refresh_seen)", null)) {
+                    "SELECT count(*) FROM records WHERE (id LIKE '82%' OR id LIKE '28%' OR id LIKE '45%') " +
+                        "AND id NOT IN (SELECT id FROM csv_refresh_seen)", null)) {
                 c.moveToFirst(); retained = c.getInt(0);
             }
             storeFields(db, allFields);
