@@ -78,6 +78,23 @@ public final class CsvCatalog {
     }
 
     public static Parsed read(Reader source, String preferred, RowConsumer consumer) throws IOException {
+        return read(source, preferred, defaultPrefixes(), consumer);
+    }
+
+    static Set<String> defaultPrefixes() {
+        Set<String> prefixes = new HashSet<>();
+        prefixes.add("28"); prefixes.add("45"); prefixes.add("82");
+        return prefixes;
+    }
+
+    static Set<String> checkedPrefixes(Set<String> selected) throws IOException {
+        if (selected == null || selected.isEmpty() || !defaultPrefixes().containsAll(selected))
+            throw new IOException("Selecciona al menos una zona entre 28, 45 y 82.");
+        return new HashSet<>(selected);
+    }
+
+    public static Parsed read(Reader source, String preferred, Set<String> selected, RowConsumer consumer) throws IOException {
+        final Set<String> prefixes = checkedPrefixes(selected);
         Reader bounded = new Reader() {
             private int read;
             @Override public int read(char[] target, int offset, int length) throws IOException {
@@ -115,8 +132,11 @@ public final class CsvCatalog {
                 if (cells.size() != headers.size()) throw new IOException("Una fila CSV no coincide con la cabecera.");
                 String recordId = cells.get(idColumn).trim();
                 // Scope the technician's local workspace to the approved matrícula prefixes.
-                if (!(recordId.startsWith("82") || recordId.startsWith("28") || recordId.startsWith("45")))
-                    continue;
+                boolean selectedPrefix = false;
+                for (String prefix : prefixes) {
+                    if (recordId.startsWith(prefix)) { selectedPrefix = true; break; }
+                }
+                if (!selectedPrefix) continue;
                 if (++count > WorkspaceStore.MAX_ROWS) throw new IOException("Límite de CT superado.");
                 LinkedHashMap<String, String> row = new LinkedHashMap<>();
                 int characters = 0;
@@ -131,7 +151,7 @@ public final class CsvCatalog {
                 row.put(id, key);
                 consumer.onRow(row, id);
             }
-            if (count == 0) throw new IOException("CSV sin CT con matrícula 82, 28 o 45.");
+            if (count == 0) throw new IOException("El GRID no contiene CT de las zonas seleccionadas.");
             return new Parsed(id, count, headers);
         }
     }
