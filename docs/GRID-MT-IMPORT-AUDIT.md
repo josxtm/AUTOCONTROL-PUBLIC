@@ -84,6 +84,10 @@ La finalización tras solicitar cancelación durante lectura y durante escritura
 
 GitHub Actions ejecuta además `:app:connectedDebugAndroidTest` en Android 35 x86_64; publica informes, el log `GRID_BENCHMARK` y APK tras superar toda la validación. Sus resultados son independientes de esta medición del host.
 
+## Fiabilidad de la validación de APK
+
+La auditoría del log de la compilación 243 confirmó que el paso de inspección lanzaba un error aunque Actions aparecía verde: la tubería hacia `tee` ocultaba el código de salida. El workflow ahora usa `set -euo pipefail` explícito. El inspector reconoce únicamente constantes completas de marcadores públicos de formato JSch (BEGIN RSA/DSA/EC/OPENSSH PRIVATE KEY sin cuerpo) y las dos direcciones genéricas de bucle/bind de la biblioteca. No se permite material de clave, otra dirección o texto agregado; los recursos y la puerta de código fuente siguen inspeccionándose sin excepciones. Tres pruebas Python verifican estas condiciones y la propagación del fallo. No se ha cambiado código de SSH.
+
 ## Límites de aceptación física y distribución
 
 No se ha usado el archivo real ni una tablet física de 13,4 pulgadas. La prueba física pendiente es seleccionar el Grid MT real mediante su proveedor SAF, verificar progreso y cancelación, confirmar, y buscar varios CT con notas previas. El host no dispone de KVM/emulador local; la ejecución Android se realiza en CI. El rendimiento en el dispositivo y proveedor concretos debe medirse allí antes de declarar cerrado el criterio de campo.
