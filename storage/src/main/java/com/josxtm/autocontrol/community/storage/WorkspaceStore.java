@@ -108,21 +108,25 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
                 String id = raw.get(fromField);
                 if (targetField[0] == null) {
                     String old = oldIdentifier == null ? "" : oldIdentifier;
-                    if (!old.isEmpty() && !CsvCatalog.normalized(old).equals(CsvCatalog.normalized(fromField))) {
+                    // The eSir source qualifier [BDI] is not part of the matrícula identity.
+                    if (!old.isEmpty() && !CsvCatalog.normalized(GridMtColumns.base(old)).equals("MATRICULA")) {
                         try (Cursor c = db.rawQuery("SELECT count(*) FROM records", null)) {
                             c.moveToFirst();
                             if (c.getLong(0) != 0)
-                                throw new IOException("El campo identificador cambió. No se ha actualizado el catálogo.");
+                                throw new IOException("El campo identificador cambió. Requiere migración controlada.");
                         }
                     }
-                    targetField[0] = old.isEmpty() ? fromField : old;
+                    targetField[0] = old.isEmpty() ? "MATRÍCULA" : old;
+                    canonical.put(CsvCatalog.normalized("MATRÍCULA"), targetField[0]);
                     canonical.put(CsvCatalog.normalized(fromField), targetField[0]);
                 }
                 ContentValues seen = new ContentValues(); seen.put("id", id);
                 if (db.insertWithOnConflict("csv_refresh_seen", null, seen, SQLiteDatabase.CONFLICT_IGNORE) < 0)
                     throw new IOException("Matrícula duplicada en el CSV.");
+                // Project the wide 364-column file to reviewed technical fields only.
+                // Never retain password columns, including in SQLite or encrypted exports.
                 LinkedHashMap<String, String> incoming = new LinkedHashMap<>();
-                for (java.util.Map.Entry<String, String> entry : raw.entrySet()) {
+                for (java.util.Map.Entry<String, String> entry : GridMtColumns.project(raw).entrySet()) {
                     String key = canonical.getOrDefault(CsvCatalog.normalized(entry.getKey()), entry.getKey());
                     incoming.put(key, entry.getValue());
                 }
