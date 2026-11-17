@@ -118,6 +118,49 @@ public final class WorkspaceStoreTest extends TestCase {
         assertEquals("Prueba, norte", store.find("28-SYN-001").get("NOMBRE"));
     }
 
+
+    public void testSelectablePrefixScopeKeepsOtherZonesUntouched() throws Exception {
+        String csv = "MATRICULA [BDI];IP LAN [EDIT];NOMBRE [BDI]\n" +
+                "28-SYN-A;synthetic-a;Madrid\n" +
+                "45-SYN-B;synthetic-b;Toledo\n" +
+                "82-SYN-C;synthetic-c;Otros\n" +
+                "13-SYN-D;synthetic-d;No autorizado\n";
+        java.util.Set<String> only45 = new java.util.HashSet<>();
+        only45.add("45");
+        String before = backup();
+        WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false, only45);
+        assertEquals(1, preview.rows);
+        assertEquals(1, preview.added);
+        assertEquals(before, backup());
+
+        WorkspaceStore.CsvUpdate applied = store.updateCsvCatalog(new StringReader(csv), "id", true, only45);
+        assertEquals(1, applied.rows);
+        assertNotNull(store.find("45-SYN-B"));
+        store.saveNote("45-SYN-B", "Nota conservada 45");
+        assertNull(store.find("28-SYN-A"));
+        assertNull(store.find("82-SYN-C"));
+        assertNull(store.find("13-SYN-D"));
+
+        java.util.Set<String> only28And82 = new java.util.HashSet<>();
+        only28And82.add("28"); only28And82.add("82");
+        WorkspaceStore.CsvUpdate second = store.updateCsvCatalog(
+                new StringReader(csv), "id", true, only28And82);
+        assertEquals(2, second.rows);
+        assertEquals(2, second.added);
+        assertNotNull(store.find("28-SYN-A"));
+        assertNotNull(store.find("82-SYN-C"));
+        assertEquals("Nota conservada 45", store.note("45-SYN-B"));
+        assertEquals("synthetic-b", store.find("45-SYN-B").get("IP LAN"));
+        assertNull(store.find("13-SYN-D"));
+
+        String snapshot = backup();
+        try {
+            store.updateCsvCatalog(new StringReader(csv), "id", true, java.util.Collections.emptySet());
+            fail("No se debe permitir ninguna zona seleccionada");
+        } catch (java.io.IOException expected) { }
+        assertEquals(snapshot, backup());
+    }
+
     public void testBackupRestoreRoundTripAndReopen() throws Exception {
         catalog(); store.saveNote("SYN-001", "Synthetic note\nα"); store.addJournal("Synthetic diary");
         store.setting("visible", "{\"label\":\"\"}"); String snapshot = backup();
