@@ -93,6 +93,12 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
     }
 
     public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply) throws IOException {
+        return updateCsvCatalog(reader, preferredField, apply, CsvCatalog.defaultPrefixes());
+    }
+
+    public synchronized CsvUpdate updateCsvCatalog(Reader reader, String preferredField, boolean apply,
+                                                    Set<String> selectedPrefixes) throws IOException {
+        final Set<String> prefixes = CsvCatalog.checkedPrefixes(selectedPrefixes);
         SQLiteDatabase db = getWritableDatabase();
         String oldIdentifier = setting("identifier");
         final int[] stats = new int[3]; // new, modified, unchanged
@@ -104,7 +110,7 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
         try {
             db.execSQL("CREATE TEMP TABLE IF NOT EXISTS csv_refresh_seen (id TEXT PRIMARY KEY NOT NULL)");
             db.execSQL("DELETE FROM csv_refresh_seen");
-            CsvCatalog.Parsed parsed = CsvCatalog.read(reader, preferredField, (raw, fromField) -> {
+            CsvCatalog.Parsed parsed = CsvCatalog.read(reader, preferredField, prefixes, (raw, fromField) -> {
                 String id = raw.get(fromField);
                 if (targetField[0] == null) {
                     String old = oldIdentifier == null ? "" : oldIdentifier;
@@ -166,9 +172,17 @@ public final class WorkspaceStore extends SQLiteOpenHelper {
                 }
             });
             int retained;
-            try (Cursor c = db.rawQuery(
-                    "SELECT count(*) FROM records WHERE (id LIKE '82%' OR id LIKE '28%' OR id LIKE '45%') " +
-                        "AND id NOT IN (SELECT id FROM csv_refresh_seen)", null)) {
+            StringBuilder retainedQuery = new StringBuilder(
+                    "SELECT count(*) FROM records WHERE id NOT IN (SELECT id FROM csv_refresh_seen) AND (");
+            String[] retainedArgs = new String[prefixes.size()];
+            int prefixIndex = 0;
+            for (String prefix : prefixes) {
+                if (prefixIndex > 0) retainedQuery.append(" OR ");
+                retainedQuery.append("id LIKE ?");
+                retainedArgs[prefixIndex++] = prefix + "%";
+            }
+            retainedQuery.append(")");
+            try (Cursor c = db.rawQuery(retainedQuery.toString(), retainedArgs)) {
                 c.moveToFirst(); retained = c.getInt(0);
             }
             storeFields(db, allFields);
