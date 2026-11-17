@@ -48,6 +48,29 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
 
     var csvPreview by mutableStateOf<WorkspaceStore.CsvUpdate?>(null); private set
     private var csvCandidate: Uri? = null
+    private var csvCandidatePrefixes: Set<String>? = null
+    var csvInclude28 by mutableStateOf(true); private set
+    var csvInclude45 by mutableStateOf(true); private set
+    var csvInclude82 by mutableStateOf(true); private set
+
+    val selectedCsvPrefixes: Set<String>
+        get() = linkedSetOf<String>().apply {
+            if (csvInclude28) add("28")
+            if (csvInclude45) add("45")
+            if (csvInclude82) add("82")
+        }
+
+    fun selectCsvPrefix(prefix: String, checked: Boolean) {
+        if (busy) return
+        when (prefix) {
+            "28" -> csvInclude28 = checked
+            "45" -> csvInclude45 = checked
+            "82" -> csvInclude82 = checked
+            else -> return
+        }
+        // Any change invalidates a preview computed for a different selection.
+        csvCandidate = null; csvCandidatePrefixes = null; csvPreview = null
+    }
     var note by mutableStateOf("")
     var journalText by mutableStateOf("")
     var journal by mutableStateOf<List<WorkspaceStore.Entry>>(emptyList()); private set
@@ -109,7 +132,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         task({ store.journal(before) }) { if (it.isEmpty()) message = "No hay más entradas." else journal = it }
     }
     /** Preview is read-only: SQLite rolls the transaction back before showing changes. */
-    private fun csvFromUri(uri: Uri, apply: Boolean): WorkspaceStore.CsvUpdate {
+    private fun csvFromUri(uri: Uri, apply: Boolean, prefixes: Set<String>): WorkspaceStore.CsvUpdate {
         val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }?.lowercase(java.util.Locale.ROOT)
@@ -127,7 +150,7 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
                 val source = if (gzip) GZIPInputStream(input, 8192) else input
                 InputStreamReader(source, charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
                     .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)).use { reader ->
-                    store.updateCsvCatalog(reader, identifier, apply)
+                    store.updateCsvCatalog(reader, identifier, apply, prefixes)
                 }
             }
         }
@@ -135,28 +158,36 @@ class WorkspaceModel(application: Application) : AndroidViewModel(application) {
         catch (_: CharacterCodingException) { parse(Charset.forName("windows-1252")) }
     }
     fun previewCsv(uri: Uri) {
-        csvCandidate = null; csvPreview = null
-        task({ csvFromUri(uri, false) }) { summary ->
+        if (busy) return
+        val selection = selectedCsvPrefixes
+        if (selection.isEmpty()) {
+            message = "Marca al menos una zona: 28, 45 u 82."
+            return
+        }
+        csvCandidate = null; csvCandidatePrefixes = null; csvPreview = null
+        task({ csvFromUri(uri, false, selection) }) { summary ->
             csvCandidate = uri
+            csvCandidatePrefixes = selection
             csvPreview = summary
-            message = "Vista previa calculada sin modificar datos. Confirma para aplicar la actualización."
+            message = "Vista previa calculada para zonas: ${selection.joinToString(", ")}. Confirma para actualizar."
         }
     }
     fun applyCsv() {
         val uri = csvCandidate ?: return
+        val selection = csvCandidatePrefixes ?: return
         task({
-            val result = csvFromUri(uri, true)
+            val result = csvFromUri(uri, true, selection)
             Pair(result, snapshot())
         }) { (summary, newSnapshot) ->
             show(newSnapshot)
-            csvCandidate = null; csvPreview = null
+            csvCandidate = null; csvCandidatePrefixes = null; csvPreview = null
             activeId = null; record = emptyMap(); note = ""
             message = "Actualización terminada: ${summary.added} nuevos, ${summary.changed} modificados, " +
                 "${summary.unchanged} sin cambios y ${summary.retained} históricos conservados. Notas y diario intactos."
         }
     }
     fun discardCsv() {
-        csvCandidate = null; csvPreview = null
+        csvCandidate = null; csvCandidatePrefixes = null; csvPreview = null
         message = "Importación cancelada. Datos sin cambios."
     }
     fun importDocument(uri: Uri) = task({
