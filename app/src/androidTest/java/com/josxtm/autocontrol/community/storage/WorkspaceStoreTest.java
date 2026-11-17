@@ -61,12 +61,13 @@ public final class WorkspaceStoreTest extends TestCase {
         store.saveNote("45-SYN-OLD", "Nota histórica");
         store.addJournal("Diario independiente");
         String before = backup();
-        String csv = "\uFEFFMATRICULA;IP_LAN;NOMBRE\r\n" +
-            "28-SYN-001;Synthetic-network-new;\"CT; actualizado\"\r\n" +
-            "82-SYN-NEW;Synthetic-network-added;Centro nuevo\r\n";
+        String csv = "\uFEFFMATRICULA [BDI];IP LAN [EDIT];NOMBRE [BDI];CONTRASEÑAS GCT [EDIT]\r\n" +
+            "28-SYN-001;Synthetic-network-new;\"CT; actualizado\";synthetic-untrusted\r\n" +
+            "82-SYN-NEW;Synthetic-network-added;Centro nuevo;synthetic-untrusted\r\n" +
+            "13-SYN-EXCLUDED;Synthetic-excluded;Centro omitido;synthetic-untrusted\r\n";
         WorkspaceStore.CsvUpdate preview = store.updateCsvCatalog(new StringReader(csv), "id", false);
         assertEquals(before, backup());
-        assertEquals(2, preview.rows);\n        assertNull(store.find("13-SYN-EXCLUDED"));
+        assertEquals(2, preview.rows);
         assertEquals(1, preview.added);
         assertEquals(1, preview.changed);
         assertEquals(1, preview.retained);
@@ -78,10 +79,11 @@ public final class WorkspaceStoreTest extends TestCase {
         assertEquals("Nota de campo", store.note("28-SYN-001"));
         assertNotNull(store.find("45-SYN-OLD"));
         assertEquals("Nota histórica", store.note("45-SYN-OLD"));
-        assertNotNull(store.find("82-SYN-NEW"));\n        assertNull(store.find("13-SYN-EXCLUDED"));\n        assertFalse(store.find("28-SYN-001").containsKey("CONTRASEÑAS GCT"));
+        assertNotNull(store.find("82-SYN-NEW"));
+        assertNull(store.find("13-SYN-EXCLUDED"));
+        assertFalse(store.find("28-SYN-001").containsKey("CONTRASEÑAS GCT"));
         assertEquals("MATRÍCULA", store.setting("identifier"));
         assertEquals(1, store.journal(Long.MAX_VALUE).size());
-        // The resulting backup remains restorable with the original identifier.
         String after = backup();
         store.restore(new StringReader(after));
         assertEquals(after, backup());
