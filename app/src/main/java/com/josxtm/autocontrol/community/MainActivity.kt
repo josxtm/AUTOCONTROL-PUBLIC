@@ -101,8 +101,28 @@ class MainActivity : ComponentActivity() {
                 when (tab) {
                     0 -> {
                         item { Text("GRID MT · eSir", style = MaterialTheme.typography.titleLarge) }
-                        item { Text("Importa el GRID MT original de eSir (.csv.gz o .csv). Solo se cargan matrículas 82, 28 y 45. Actualiza IP y datos técnicos por matrícula sin borrar notas ni diario.") }
-                        item { Action("Cargar GRID MT de eSir (.csv.gz)", enabled, pickCatalog) }
+                        item { Text("Carga directamente el archivo .csv.gz o .csv original. Selecciona qué zonas quieres actualizar; las no seleccionadas y todas las notas se conservan.") }
+                        item { Text("Zonas a importar", style = MaterialTheme.typography.titleMedium) }
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = m.csvInclude28, onCheckedChange = { m.selectCsvPrefix("28", it) }, enabled = enabled)
+                                Text("28 · Madrid")
+                            }
+                        }
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = m.csvInclude45, onCheckedChange = { m.selectCsvPrefix("45", it) }, enabled = enabled)
+                                Text("45 · Toledo")
+                            }
+                        }
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = m.csvInclude82, onCheckedChange = { m.selectCsvPrefix("82", it) }, enabled = enabled)
+                                Text("82 · Otros centros")
+                            }
+                        }
+                        item { Text("Se aplicarán únicamente los prefijos marcados. Sin selección no se puede importar.") }
+                        item { Action("Cargar GRID MT de eSir (.csv.gz)", enabled && m.selectedCsvPrefixes.isNotEmpty(), pickCatalog) }
                         m.csvPreview?.let { preview ->
                             item { Text("Vista previa: ${preview.rows} CT del archivo · ${preview.added} nuevos · ${preview.changed} modificados · ${preview.unchanged} sin cambios · ${preview.retained} históricos conservados.") }
                             item { Text("Identificador: ${preview.identifier}. Los CT ausentes se conservan sin eliminar sus notas. Se actualizarán datos e IP del catálogo, nunca las anotaciones.") }
