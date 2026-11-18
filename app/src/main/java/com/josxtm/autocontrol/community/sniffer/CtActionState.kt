@@ -4,11 +4,18 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.*
 import kotlinx.coroutines.*
+import org.json.JSONObject
 
 /** Session state survives tab changes; a CT change invalidates every CT-dependent action/result. */
-internal class CtActionState(private val context: Context, val transport: SshTransport, private val scope: CoroutineScope) {
-    private val preferences = context.getSharedPreferences("sniffer-private-address-profiles", 0)
-    var profiles by mutableStateOf(preferences.getString("profiles", null)?.let { runCatching { LocalAddressProfiles.decode(it) }.getOrNull() }); private set
+internal class CtActionState(private val context: Context, val transport: SshTransport, private val scope: CoroutineScope,
+    private val profileStore: AddressProfileStore = AddressProfileStore(context)) {
+    private var installedProfile = runCatching { profileStore.installed() }.getOrNull()
+    var profiles by mutableStateOf(installedProfile?.profiles); private set
+    var confirmationSaved by mutableStateOf(false); private set
+    private var originalBase = ""
+    private var inputSource = ""
+    val transformersAutomatic get() = profiles?.let { LocalAddressProfiles.count(record, it.transformerFields) }?.let { it > 0 } == true
+    val remotesAutomatic get() = profiles?.let { LocalAddressProfiles.count(record, it.remoteFields) } != null
     var ct by mutableStateOf(""); private set
     var record by mutableStateOf<Map<String, String?>>(emptyMap()); private set
     var transformers by mutableStateOf("")
@@ -20,10 +27,10 @@ internal class CtActionState(private val context: Context, val transport: SshTra
     var proposal by mutableStateOf<WanManager.Prepared?>(null); private set
     var snapshot by mutableStateOf<WanManager.Snapshot?>(null); private set
     var busy by mutableStateOf(false); private set
-    var message by mutableStateOf("Importa un perfil privado revisado para habilitar las acciones."); private set
+    var message by mutableStateOf(if (profiles == null) "Instala el perfil privado una vez desde Configuración." else "Perfil privado disponible. Selecciona un CT del Grid MT."); private set
     var webOverrides by mutableStateOf<Map<String, Pair<String, String>>>(emptyMap()); private set
     fun configureWeb(service: AddressPlan.Service, scheme: String, port: String) {
-        if (!busy) webOverrides = webOverrides + (service.id to (scheme to port.take(5)))
+        if (!busy) { webOverrides = webOverrides + (service.id to (scheme to port.take(5))); confirmationSaved = false }
     }
     fun webService(service: AddressPlan.Service): AddressPlan.Service? = runCatching {
         val spec = webOverrides[service.id] ?: (service.scheme to service.port.toString())
@@ -47,16 +54,58 @@ internal class CtActionState(private val context: Context, val transport: SshTra
             transformers.toIntOrNull(), remotes.toIntOrNull(), inventory)
     }.getOrNull()
     fun changeCt(id: String?, values: Map<String, String?>, lan: String?) {
-        if (ct == id.orEmpty() && record == values && base.isNotEmpty()) return
-        cancel(); epoch++; ct = id.orEmpty(); record = values.toMap(); base = lan.orEmpty()
+        if (ct == id.orEmpty() && record == values && originalBase == lan.orEmpty() && base.isNotEmpty()) return
+        cancel(); epoch++; ct = id.orEmpty(); record = values.toMap(); originalBase = lan.orEmpty(); base = originalBase
         transformers = profiles?.let { LocalAddressProfiles.count(record, it.transformerFields) }?.toString().orEmpty()
         remotes = profiles?.let { LocalAddressProfiles.count(record, it.remoteFields) }?.toString().orEmpty()
-        inventory = emptyMap(); webOverrides = emptyMap(); invalidate()
-        message = if (leaseActive) "WAN temporal de $leaseCt. Restaúrala antes de diagnosticar otro CT." else "Comprueba inventario y perfil antes de actuar."
+        inventory = emptyMap(); webOverrides = emptyMap(); confirmationSaved = false
+        inputSource = profiles?.let { AddressProfileStore.source(it, record, lan) }.orEmpty()
+        if (ct.isNotEmpty() && installedProfile != null) {
+            profileStore.confirmation(ct, requireNotNull(installedProfile).digest, inputSource)?.let { saved ->
+                if (!transformersAutomatic) transformers = saved.getString("transformers")
+                if (!remotesAutomatic) remotes = saved.getString("remotes")
+                base = saved.getString("base")
+                val storedPresence = saved.getJSONObject("presence")
+                inventory = storedPresence.keys().asSequence().associateWith { AddressPlan.Presence.valueOf(storedPresence.getString(it)) }
+                val storedWeb = saved.getJSONObject("web")
+                webOverrides = storedWeb.keys().asSequence().associateWith { key ->
+                    val value = storedWeb.getJSONObject(key); value.getString("scheme") to value.getInt("port").toString()
+                }
+                confirmationSaved = true
+            }
+        }
+        invalidate()
+        message = when {
+            leaseActive -> "WAN temporal de $leaseCt. Restaúrala antes de diagnosticar otro CT."
+            profiles == null -> "Instala el perfil privado una vez en Configuración."
+            kind == AddressPlan.Kind.UNKNOWN -> "Falta inventario fiable. Confirma solo los datos necesarios y guárdalos para este CT."
+            confirmationSaved -> "Perfil seleccionado automáticamente con datos Grid y confirmación local guardada."
+            else -> "Datos del Grid cargados. Perfil seleccionado por topología, independiente del fabricante."
+        }
+    }
+    fun saveConfirmation() {
+        val plan = plan() ?: return
+        val profile = installedProfile ?: return
+        val chosenCt = ct
+        val presence = JSONObject(); inventory.forEach { (key, value) -> presence.put(key, value.name) }
+        val web = JSONObject()
+        for ((key, spec) in webOverrides) {
+            val port = spec.second.toIntOrNull()
+            if (spec.first !in listOf("http", "https") || port == null || port !in 1..65535) {
+                message = "Confirma protocolo y puerto web válidos antes de guardar."; return
+            }
+            web.put(key, JSONObject().put("scheme", spec.first).put("port", port))
+        }
+        val value = JSONObject().put("schema", 1).put("profile", profile.digest).put("source", inputSource)
+            .put("transformers", transformers).put("remotes", remotes).put("base", plan.base)
+            .put("presence", presence).put("web", web)
+        task({ profileStore.saveConfirmation(chosenCt, value) }) {
+            confirmationSaved = true; message = "Confirmación guardada para este CT. No se volverá a pedir mientras su inventario/base y el perfil sigan vigentes."
+        }
     }
     fun invalidate() { epoch++; proposal = null; results = emptyMap(); maintenance = ""; authorized = false; physicallyAbsent = false }
-    fun edit(action: () -> Unit) { if (!busy && !leaseActive) { action(); invalidate() } }
-    fun presence(id: String, value: AddressPlan.Presence) { if (!busy && !leaseActive) { inventory = inventory + (id to value); invalidate() } }
+    fun edit(action: () -> Unit) { if (!busy && !leaseActive) { action(); confirmationSaved = false; invalidate() } }
+    fun presence(id: String, value: AddressPlan.Presence) { if (!busy && !leaseActive) { inventory = inventory + (id to value); confirmationSaved = false; invalidate() } }
     fun maintenance(value: String) { if (!busy) { maintenance = value.take(15); proposal = null; authorized = false; physicallyAbsent = false } }
     fun cancel() { token?.cancel() }
     private fun <T> task(work: (CancellationToken) -> T, done: (T) -> Unit = {}) {
@@ -89,12 +138,11 @@ internal class CtActionState(private val context: Context, val transport: SshTra
             while (true) { val n = input.read(buffer); if (n < 0) break; require(bytes.size() + n <= 131072); bytes.write(buffer, 0, n) }
             bytes.toString("UTF-8")
         }
-        Pair(LocalAddressProfiles.decode(text), text)
-    }) { (loaded, text) ->
-        profiles = loaded; preferences.edit().putString("profiles", text).apply()
-        transformers = LocalAddressProfiles.count(record, loaded.transformerFields)?.toString().orEmpty()
-        remotes = LocalAddressProfiles.count(record, loaded.remoteFields)?.toString().orEmpty()
-        invalidate(); message = "Perfil privado cargado. Contrasta inventario, máscara y servicios antes de aplicar WAN."
+        profileStore.install(text)
+    }) { loaded ->
+        installedProfile = loaded; profiles = loaded.profiles
+        val selected = ct; ct = ""
+        changeCt(selected, record, originalBase)
     }
     fun inspect() = task({ wan.inspect(it) }) { snapshot = it; message = "WAN comprobada; configuración permanente intacta." }
     fun prepare(host: String) {

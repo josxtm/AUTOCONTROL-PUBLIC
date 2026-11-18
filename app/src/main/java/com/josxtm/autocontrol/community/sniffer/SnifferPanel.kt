@@ -27,7 +27,7 @@ import kotlinx.coroutines.runBlocking
 
 
 @Composable
-fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null, selectedRecord: Map<String, String?> = emptyMap(), suppliedTransport: SshTransport? = null) {
+fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null, selectedRecord: Map<String, String?> = emptyMap(), suppliedTransport: SshTransport? = null, onOpenProfileSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val profile = remember { context.getSharedPreferences("sniffer-ssh-profile", 0) }
@@ -201,7 +201,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 }
             }
         } else {
-            CtActionsPanel(actions, host, sessionConnected && !active) {
+            CtActionsPanel(actions, host, sessionConnected && !active, onOpenProfileSettings) {
                 val canReconnect = !active && !actions.busy && !sessionConnected
                 val canEdit = canReconnect && !actions.leaseActive
                 OutlinedTextField(host, { host = it.take(253) }, label = { Text("IPv4 Mango (gestión SSH)") }, enabled = canEdit, singleLine = true)

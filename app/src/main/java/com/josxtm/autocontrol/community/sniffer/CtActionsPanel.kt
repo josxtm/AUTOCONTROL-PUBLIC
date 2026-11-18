@@ -2,8 +2,6 @@ package com.josxtm.autocontrol.community.sniffer
 
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,12 +14,10 @@ import androidx.compose.ui.unit.dp
 
 /** Compact functional panels using the app's existing Material theme. */
 @Composable internal fun CtActionsPanel(state: CtActionState, host: String, connected: Boolean,
-    connection: @Composable () -> Unit) {
+    openSettings: () -> Unit = {}, connection: @Composable () -> Unit) {
     val context = LocalContext.current
     var confirmation by remember { mutableStateOf("") }
-    var pendingProfile by remember { mutableStateOf<Uri?>(null) }
     var webError by remember { mutableStateOf("") }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { pendingProfile = it }
     val plan = state.plan()
     val enabled = !state.busy
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -35,18 +31,23 @@ import androidx.compose.ui.unit.dp
                 Text("CT seleccionado", style = MaterialTheme.typography.titleMedium)
                 Text(state.ct.ifBlank { "Selecciona una matrícula en CT" })
                 state.record.entries.firstOrNull { LocalAddressProfiles.key(it.key) == "NOMBRE" }?.value?.let { Text(it) }
-                OutlinedTextField(state.transformers, { v -> state.edit { state.transformers = v.take(3) } }, label = { Text("Transformadores confirmados") }, enabled = enabled && !state.leaseActive, singleLine = true)
-                OutlinedTextField(state.remotes, { v -> state.edit { state.remotes = v.take(3) } }, label = { Text("Remotas confirmadas") }, enabled = enabled && !state.leaseActive, singleLine = true)
+                OutlinedTextField(state.transformers, { v -> state.edit { state.transformers = v.take(3) } }, label = { Text("Transformadores confirmados") }, enabled = enabled && !state.leaseActive && !state.transformersAutomatic, singleLine = true)
+                OutlinedTextField(state.remotes, { v -> state.edit { state.remotes = v.take(3) } }, label = { Text("Remotas aplicables confirmadas") }, enabled = enabled && !state.leaseActive && !state.remotesAutomatic, singleLine = true)
                 Text(when (state.kind) {
                     AddressPlan.Kind.NORMAL -> "Normal /28"
-                    AddressPlan.Kind.EXTENDED -> "Extendido /26 · confirmar perfil local"
+                    AddressPlan.Kind.EXTENDED -> "Extendido /26"
                     else -> "Inventario incompleto: perfil sin confirmar"
                 })
                 OutlinedTextField(state.base, { v -> state.edit { state.base = v.take(18) } }, label = { Text("IP LAN base del CT") }, enabled = enabled && !state.leaseActive, singleLine = true)
                 Text("Máscara: ${plan?.mask() ?: "sin validar"}")
-                Text("Perfil: ${plan?.profile?.revision ?: "pendiente de importar y validar"}", style = MaterialTheme.typography.bodySmall)
-                Button(onClick = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, enabled = enabled && !state.leaseActive) { Text("Importar perfil privado") }
-                Text("Las posiciones sin servicio no se consideran libres. Los perfiles no se incluyen en APK ni copias del catálogo.", style = MaterialTheme.typography.bodySmall)
+                Text("Perfil: ${plan?.profile?.revision ?: "pendiente de inventario/base válidos"}", style = MaterialTheme.typography.bodySmall)
+                if (state.profiles == null) {
+                    OutlinedButton(onClick = openSettings, enabled = enabled) { Text("Configurar perfil una sola vez") }
+                } else {
+                    Text(if (state.confirmationSaved) "Confirmación local guardada" else "Confirma solo los datos que falten; los valores fiables del Grid son automáticos.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = state::saveConfirmation, enabled = enabled && !state.leaseActive && plan != null && !state.confirmationSaved) { Text("Guardar confirmación de este CT") }
+                }
+
             }
             Column(Modifier.weight(.33f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Mango · WAN temporal", style = MaterialTheme.typography.titleMedium)
@@ -118,12 +119,6 @@ import androidx.compose.ui.unit.dp
                 if (webError.isNotEmpty()) Text(webError)
             }
         }
-    }
-    pendingProfile?.let { uri ->
-        AlertDialog(onDismissRequest = { pendingProfile = null }, title = { Text("Perfil privado autorizado") },
-            text = { Text("Confirma que esta configuración procede de documentación autorizada y que has revisado sus asignaciones, reservas y protocolos web. Se guarda únicamente en esta aplicación.") },
-            confirmButton = { TextButton(onClick = { pendingProfile = null; state.importProfiles(uri) }) { Text("Importar perfil revisado") } },
-            dismissButton = { TextButton(onClick = { pendingProfile = null }) { Text("Cancelar") } })
     }
     if (confirmation.isNotEmpty()) AlertDialog(onDismissRequest = { confirmation = "" }, title = { Text(if (confirmation == "apply") "Confirmar WAN temporal" else "Restaurar WAN") },
         text = { Text(if (confirmation == "apply") "Se volverán a comprobar interfaz, gestión y ocupación. Se añadirá únicamente la IP mostrada a la WAN del Mango. Confirma autorización y ausencia de otro equipo con esa IP." else "Se retirará únicamente el alias creado por esta sesión. No se tocarán las direcciones ni los gateways anteriores.") },
