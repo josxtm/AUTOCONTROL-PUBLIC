@@ -1,6 +1,7 @@
 package com.josxtm.autocontrol.community.sniffer
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -156,8 +157,16 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 Column(Modifier.weight(.51f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Consola SSH", style = MaterialTheme.typography.titleMedium)
                     val consoleScroll = rememberScrollState()
-                    val follow = consoleScroll.maxValue - consoleScroll.value < 40
-                    LaunchedEffect(output) { if (follow) consoleScroll.animateScrollTo(consoleScroll.maxValue) }
+                    val dragging by consoleScroll.interactionSource.collectIsDraggedAsState()
+                    var follow by remember { mutableStateOf(true) }
+                    LaunchedEffect(dragging, consoleScroll.value) {
+                        if (dragging) follow = consoleScroll.maxValue - consoleScroll.value < 40
+                        else if (consoleScroll.value == consoleScroll.maxValue) follow = true
+                    }
+                    // Follow the measured content extent, after layout, rather than its previous height.
+                    LaunchedEffect(consoleScroll.maxValue, follow, dragging) {
+                        if (follow && !dragging) consoleScroll.scrollTo(consoleScroll.maxValue)
+                    }
                     Surface(Modifier.weight(1f).fillMaxWidth(), color = androidx.compose.ui.graphics.Color(0xFF20252A)) {
                         Column(Modifier.verticalScroll(consoleScroll).padding(10.dp)) {
                             Text(output.ifBlank { "Sin salida" }, color = androidx.compose.ui.graphics.Color(0xFFF1F1F1), style = MaterialTheme.typography.bodySmall)
