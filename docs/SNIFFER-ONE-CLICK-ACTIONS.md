@@ -56,13 +56,13 @@ Los candidatos de mantenimiento son propuestas, no permisos. Un servicio instala
 - Cancelación/error intenta restaurar con un token nuevo. Si falla, conserva el estado de recuperación. Al reconectar «Comprobar WAN» descubre el marcador y permite restaurarlo. Al salir se intenta restaurar antes de desconectar; el watchdog cubre caída de app/conexión. Una terminación forzosa del proceso remoto puede dejar la exclusión/marcador incompleto: requiere revisión manual autorizada; no se fuerza un borrado sin conocer el dueño.
 - Se exige `nohup`; si falta una utilidad requerida se bloquea y se muestra comando no disponible. La compatibilidad concreta de BusyBox/netifd/arping debe verificarse físicamente.
 
-Al cambiar de CT se cancela el trabajo, se invalidan propuestas/resultados/webs y se restablecen inventarios y confirmaciones. La WAN de otra matrícula bloquea nuevas acciones hasta restaurarla. Las tareas publican resultados solo para su generación. Las operaciones de recuperación terminan en el worker; la UI no espera monitores de red.
+Mientras SSH está conectado o existe una sesión WAN pendiente, el destino SSH no se puede editar. Si se pierde la conexión con WAN temporal, la contraseña y «Conectar» siguen disponibles para recuperar el mismo Mango; una prueba Compose reproduce ese caso sin sockets. Al cambiar de CT se cancela el trabajo, se invalidan propuestas/resultados/webs y se restablecen inventarios y confirmaciones. La WAN de otra matrícula bloquea nuevas acciones hasta restaurarla. Las tareas publican resultados solo para su generación. Las operaciones de recuperación terminan en el worker; la UI no espera monitores de red.
 
 ## Estados SSH y acceso web
 
 `id` sustituye `whoami` en los botones. Los canales exec se abren sin PTY y tienen deadline/cierre efectivos. Se permite una breve llegada tardía del exit status; su ausencia se informa como desconocida. Se distinguen error de canal/conexión SSH, comando inexistente (127), comando terminado con error, timeout, cancelación y ausencia de respuesta ICMP. No se interpreta stderr como fallo de conexión ni se desactiva pinning.
 
-Solo una respuesta ping válida pinta éxito. No-respuesta, desconocido y no instalado tienen etiquetas propias. Los protocolos HTTP/HTTPS y el puerto deben venir del perfil revisado o confirmarse en la GUI. Se construye una URI numérica sin usuario, contraseña, query o comandos. Al pulsar se valida de nuevo la matrícula/base/revisión, evitando abrir un destino de un CT anterior.
+Cada resultado identifica si procede de Mango SSH o Android; cambiar el origen limpia los resultados previos. Solo una respuesta ping válida pinta éxito. No-respuesta, desconocido y no instalado tienen etiquetas propias. Los protocolos HTTP/HTTPS y el puerto deben venir del perfil revisado o confirmarse en la GUI. Se construye una URI numérica sin usuario, contraseña, query o comandos. Al pulsar se valida de nuevo la matrícula/base/revisión, evitando abrir un destino de un CT anterior.
 
 ## Pruebas y límites
 

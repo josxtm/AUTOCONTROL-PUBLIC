@@ -30,7 +30,8 @@ internal class CtActionState(private val context: Context, val transport: SshTra
         require(spec.first == "http" || spec.first == "https")
         AddressPlan.Service(service.id, service.label, service.offset, service.inventory, service.index, spec.first, requireNotNull(spec.second.toIntOrNull()))
     }.getOrNull()
-    var direct by mutableStateOf(false)
+    fun sourceDirect(value: Boolean) { if (!busy) { direct = value; epoch++; results = emptyMap() } }
+    var direct by mutableStateOf(false); private set
     var authorized by mutableStateOf(false)
     var physicallyAbsent by mutableStateOf(false)
     var leaseActive by mutableStateOf(false); private set

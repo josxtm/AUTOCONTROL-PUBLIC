@@ -74,7 +74,7 @@ import androidx.compose.ui.unit.dp
             }
             Column(Modifier.weight(.38f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Equipos", style = MaterialTheme.typography.titleMedium)
-                Row { Checkbox(state.direct, { state.direct = it }, enabled = enabled); Text("Comprobar desde Android") }
+                Row { Checkbox(state.direct, state::sourceDirect, enabled = enabled); Text("Comprobar desde Android") }
                 Button(onClick = { state.ping(expectedCt = plan?.ct) }, enabled = enabled && plan != null && (state.direct || connected) && (!state.leaseActive || state.leaseCt == state.ct)) { Text("Comprobar todos") }
                 if (plan == null) Text("No se calculan direcciones sin perfil, inventario y base alineada válidos.")
                 plan?.profile?.services?.forEach { service ->
@@ -87,7 +87,7 @@ import androidx.compose.ui.unit.dp
                     }
                     HorizontalDivider()
                     Text("${service.label} · ${plan.address(service)}", style = MaterialTheme.typography.titleSmall)
-                    Text(result?.let { "${it.label()} · total ${it.elapsedMillis} ms" } ?: when (presence) {
+                    Text(result?.let { "${it.label()} · ${if (it.source == DiagnosticSource.MANGO_SSH) "Mango SSH" else "Android"} · total ${it.elapsedMillis} ms" } ?: when (presence) {
                         AddressPlan.Presence.ABSENT -> "No instalado"
                         AddressPlan.Presence.UNKNOWN -> "Instalación sin confirmar"
                         else -> "Instalado · sin comprobar"
