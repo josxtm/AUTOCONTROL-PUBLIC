@@ -21,7 +21,7 @@ internal object SyntheticPrivateProfile {
                 .put("offset", offset).put("inventory", "manual").put("index", 0).put("scheme", "https").put("port", 8443)))
             .put("maintenanceCandidates", JSONArray().put(6)).put("reserved", JSONArray().put(10))
         return JSONObject().put("schema", 1).put("normal", profile(28, 4)).put("extended", profile(26, 27))
-            .put("transformerFields", JSONArray().put("COUNT_A")).put("remoteFields", JSONArray().put("COUNT_B")).toString()
+            .put("transformerFields", JSONArray().put("COUNT_A").put("NTRAFOS")).put("remoteFields", JSONArray().put("COUNT_B").put("RTUN")).toString()
     }
     fun confirmation(installed: AddressProfileStore.Installed, record: Map<String, String?>) = JSONObject()
         .put("schema", 1).put("profile", installed.digest).put("source", AddressProfileStore.source(installed.profiles, record, base))
@@ -46,14 +46,14 @@ class ProfilePersistenceTest {
         prefs.edit().putString("profiles", SyntheticPrivateProfile.text()).commit()
         val initial = requireNotNull(store().installed())
         assertEquals(0L, initial.installedAt)
-        val record = mapOf("COUNT_A" to "1")
+        val record = mapOf("NTRAFOS" to "1", "RTUN" to "2")
         store().saveConfirmation("28-SYN-PERSIST", SyntheticPrivateProfile.confirmation(initial, record))
         val before = backupText(store())
         val dbName = "synthetic-profile-grid.db"
         context.deleteDatabase(dbName)
         val db = WorkspaceStore(context, dbName)
         try {
-            val csv = "MATRICULA;IP LAN;COUNT_A;CONTRASEÑAS GCT\n28-SYN-PERSIST;${SyntheticPrivateProfile.base};1;synthetic-excluded\n"
+            val csv = "MATRICULA;IP LAN;NTRAFOS;RTUN;CONTRASEÑAS GCT\n28-SYN-PERSIST;${SyntheticPrivateProfile.base};1;2;synthetic-excluded\n"
             db.updateCsvCatalog(StringReader(csv), "id", true)
             db.saveNote("28-SYN-PERSIST", "Synthetic field note")
             db.addJournal("Synthetic historical diary")
@@ -63,6 +63,14 @@ class ProfilePersistenceTest {
             assertEquals(1, db.journal(Long.MAX_VALUE).size)
             assertFalse(db.find("28-SYN-PERSIST").keys.any { it.contains("CONTRASE", true) })
             assertEquals(before, backupText(store()))
+            val imported = db.find("28-SYN-PERSIST")
+            assertEquals(1, LocalAddressProfiles.count(imported, initial.profiles.transformerFields))
+            assertEquals(2, LocalAddressProfiles.count(imported, initial.profiles.remoteFields))
+            assertEquals(AddressPlan.Kind.NORMAL, AddressPlan.kind(
+                LocalAddressProfiles.count(imported, initial.profiles.transformerFields),
+                LocalAddressProfiles.count(imported, initial.profiles.remoteFields)))
+            assertNotNull(store().confirmation("28-SYN-PERSIST", initial.digest,
+                AddressProfileStore.source(initial.profiles, imported, imported["IP LAN"])))
             val reopened = requireNotNull(store().installed())
             assertEquals(initial.digest, reopened.digest)
             assertNotNull(store().confirmation("28-SYN-PERSIST", reopened.digest, AddressProfileStore.source(reopened.profiles, record, SyntheticPrivateProfile.base)))
