@@ -55,8 +55,8 @@ internal class CtActionState(private val context: Context, val transport: SshTra
         message = if (leaseActive) "WAN temporal de $leaseCt. Restaúrala antes de diagnosticar otro CT." else "Comprueba inventario y perfil antes de actuar."
     }
     fun invalidate() { epoch++; proposal = null; results = emptyMap(); maintenance = ""; authorized = false; physicallyAbsent = false }
-    fun edit(action: () -> Unit) { if (!busy) { action(); invalidate() } }
-    fun presence(id: String, value: AddressPlan.Presence) { if (!busy) { inventory = inventory + (id to value); invalidate() } }
+    fun edit(action: () -> Unit) { if (!busy && !leaseActive) { action(); invalidate() } }
+    fun presence(id: String, value: AddressPlan.Presence) { if (!busy && !leaseActive) { inventory = inventory + (id to value); invalidate() } }
     fun maintenance(value: String) { if (!busy) { maintenance = value.take(15); proposal = null; authorized = false; physicallyAbsent = false } }
     fun cancel() { token?.cancel() }
     private fun <T> task(work: (CancellationToken) -> T, done: (T) -> Unit = {}) {

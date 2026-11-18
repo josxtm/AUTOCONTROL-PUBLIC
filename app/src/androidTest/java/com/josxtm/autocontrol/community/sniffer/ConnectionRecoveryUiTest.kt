@@ -53,6 +53,8 @@ class ConnectionRecoveryUiTest {
             compose.onNodeWithText("Comprobar WAN").performScrollTo().performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("WAN comprobada; configuración permanente intacta.").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("IPv4 Mango (gestión SSH)").assertIsNotEnabled()
+            compose.onNodeWithText("Transformadores confirmados").assertIsNotEnabled()
+            compose.onNodeWithText("IP LAN base del CT").assertIsNotEnabled()
             compose.onNodeWithText("Contraseña de sesión").assertIsEnabled()
             compose.onNodeWithText("Contraseña de sesión").performScrollTo().performTextInput("synthetic")
             compose.runOnUiThread {

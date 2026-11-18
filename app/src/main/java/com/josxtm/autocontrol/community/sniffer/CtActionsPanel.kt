@@ -35,14 +35,14 @@ import androidx.compose.ui.unit.dp
                 Text("CT seleccionado", style = MaterialTheme.typography.titleMedium)
                 Text(state.ct.ifBlank { "Selecciona una matrícula en CT" })
                 state.record.entries.firstOrNull { LocalAddressProfiles.key(it.key) == "NOMBRE" }?.value?.let { Text(it) }
-                OutlinedTextField(state.transformers, { v -> state.edit { state.transformers = v.take(3) } }, label = { Text("Transformadores confirmados") }, enabled = enabled, singleLine = true)
-                OutlinedTextField(state.remotes, { v -> state.edit { state.remotes = v.take(3) } }, label = { Text("Remotas confirmadas") }, enabled = enabled, singleLine = true)
+                OutlinedTextField(state.transformers, { v -> state.edit { state.transformers = v.take(3) } }, label = { Text("Transformadores confirmados") }, enabled = enabled && !state.leaseActive, singleLine = true)
+                OutlinedTextField(state.remotes, { v -> state.edit { state.remotes = v.take(3) } }, label = { Text("Remotas confirmadas") }, enabled = enabled && !state.leaseActive, singleLine = true)
                 Text(when (state.kind) {
                     AddressPlan.Kind.NORMAL -> "Normal /28"
                     AddressPlan.Kind.EXTENDED -> "Extendido /26 · confirmar perfil local"
                     else -> "Inventario incompleto: perfil sin confirmar"
                 })
-                OutlinedTextField(state.base, { v -> state.edit { state.base = v.take(18) } }, label = { Text("IP LAN base del CT") }, enabled = enabled, singleLine = true)
+                OutlinedTextField(state.base, { v -> state.edit { state.base = v.take(18) } }, label = { Text("IP LAN base del CT") }, enabled = enabled && !state.leaseActive, singleLine = true)
                 Text("Máscara: ${plan?.mask() ?: "sin validar"}")
                 Text("Perfil: ${plan?.profile?.revision ?: "pendiente de importar y validar"}", style = MaterialTheme.typography.bodySmall)
                 Button(onClick = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, enabled = enabled && !state.leaseActive) { Text("Importar perfil privado") }
@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.dp
                     }, color = color, style = MaterialTheme.typography.bodySmall)
                     Row {
                         listOf(AddressPlan.Presence.INSTALLED to "Sí", AddressPlan.Presence.ABSENT to "No", AddressPlan.Presence.UNKNOWN to "?").forEach { (value, label) ->
-                            TextButton(onClick = { state.presence(service.id, value) }, enabled = enabled) { Text(if (presence == value) "● $label" else label) }
+                            TextButton(onClick = { state.presence(service.id, value) }, enabled = enabled && !state.leaseActive) { Text(if (presence == value) "● $label" else label) }
                         }
                     }
                     val webSpec = state.webOverrides[service.id] ?: (service.scheme to if (service.scheme.isBlank()) "" else service.port.toString())
