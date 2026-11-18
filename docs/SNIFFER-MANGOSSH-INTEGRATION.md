@@ -1,3 +1,5 @@
+> Documento de la integración anterior. Para el flujo actual por matrícula, perfiles privados y WAN temporal, consultar [acciones CT](SNIFFER-ONE-CLICK-ACTIONS.md). Las tablas fijas y entradas manuales descritas aquí han sido sustituidas por perfiles locales revisados.
+
 # SNIFFER LAN — MangoSSH integrado (fase funcional)
 
 ## Arquitectura y alcance

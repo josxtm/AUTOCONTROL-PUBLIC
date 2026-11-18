@@ -83,6 +83,10 @@ public final class SshTransport {
     /** Diagnostics remain allowlisted. Output is optional and separate from metadata. */
     public DiagnosticResult diagnostic(String command,long timeoutMillis,CancellationToken cancellation,Output output) {
         if(!EndpointPolicy.diagnostic(command))return result(DiagnosticStatus.INVALID_TARGET);
+        return executeControl(command, timeoutMillis, cancellation, output);
+    }
+    // Package-private: only validated, typed controllers may send fixed control scripts.
+    DiagnosticResult executeControl(String command,long timeoutMillis,CancellationToken cancellation,Output output) {
         if(timeoutMillis<1||timeoutMillis>60000)throw new IllegalArgumentException("Límite no válido");
         Connection owner;
         synchronized(state){owner=connection;operations.add(cancellation);}

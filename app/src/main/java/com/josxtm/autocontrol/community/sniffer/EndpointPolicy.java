@@ -11,7 +11,7 @@ public final class EndpointPolicy {
             && username != null && !username.isBlank() && username.length() <= 128
             && username.matches("[A-Za-z0-9_][A-Za-z0-9_.@-]*");
     }
-    private static final Set<String> DIAGNOSTICS = Set.of("whoami", "pwd", "date", "uname -a", "df -h");
+    private static final Set<String> DIAGNOSTICS = Set.of("id", "whoami", "pwd", "date", "uname -a", "df -h");
     public static boolean diagnostic(String command) {
         if (command == null) return false;
         if (DIAGNOSTICS.contains(command)) return true;

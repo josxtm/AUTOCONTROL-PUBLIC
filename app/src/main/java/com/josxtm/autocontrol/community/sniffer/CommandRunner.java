@@ -57,6 +57,7 @@ final class CommandRunner {
                 }
                 byte[] buffer = new byte[2048];
                 boolean eof = false;
+                long closedAt = 0;
                 while (stopped.get() == null) {
                     if (System.nanoTime()-start >= TimeUnit.MILLISECONDS.toNanos(timeoutMillis)) {
                         stopped.compareAndSet(null, DiagnosticStatus.TIMEOUT); break;
@@ -70,10 +71,16 @@ final class CommandRunner {
                         else {
                             int allowed = Math.min(n, MAX_OUTPUT - bytes.size());
                             bytes.write(buffer, 0, allowed);
-                            if (allowed != n || bytes.size() == MAX_OUTPUT) break; // Truncated is an error, never success.
+                            if (allowed != n || bytes.size() == MAX_OUTPUT) { status = DiagnosticStatus.OUTPUT_LIMIT; break; } // Truncated is an error, never success.
                         }
                     } else if (channel.closed()) {
                         exit = channel.exitCode();
+                        if (exit < 0) {
+                            if (closedAt == 0) closedAt = System.nanoTime();
+                            if (System.nanoTime() - closedAt < TimeUnit.MILLISECONDS.toNanos(250)) {
+                                Thread.sleep(10); continue;
+                            }
+                        }
                         status = DiagnosticResult.exitStatus(ping, exit, stderr.get());
                         break;
                     } else Thread.sleep(10);

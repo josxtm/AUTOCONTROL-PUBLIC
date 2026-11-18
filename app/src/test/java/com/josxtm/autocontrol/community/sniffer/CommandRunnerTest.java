@@ -52,7 +52,7 @@ public class CommandRunnerTest {
         Channel fail=hanging();fail.failConnect=true;
         assertEquals(DiagnosticStatus.SSH_ERROR,CommandRunner.run(fail,false,1000,new CancellationToken(),null).status);assertTrue(fail.disposed);
         Channel large=new Channel(new ByteArrayInputStream(new byte[CommandRunner.MAX_OUTPUT+1]));large.finished=true;
-        assertEquals(DiagnosticStatus.SSH_ERROR,CommandRunner.run(large,false,1000,new CancellationToken(),null).status);assertTrue(large.disposed);
+        assertEquals(DiagnosticStatus.OUTPUT_LIMIT,CommandRunner.run(large,false,1000,new CancellationToken(),null).status);assertTrue(large.disposed);
     }
     @Test public void cancellationBeforeStartNeverConnects(){
         Channel c=hanging();CancellationToken token=new CancellationToken();token.cancel();
@@ -61,11 +61,19 @@ public class CommandRunnerTest {
     @Test public void classificationUsesExitStatusNotLocalizedPingText(){
         for(int code:new int[]{0,1,2,-1}){
             Channel c=new Channel(new ByteArrayInputStream("100% packet loss".getBytes(java.nio.charset.StandardCharsets.UTF_8)));c.finished=true;c.code=code;
-            assertEquals(code==0?DiagnosticStatus.VALID_RESPONSE:code==1?DiagnosticStatus.NO_RESPONSE:DiagnosticStatus.SSH_ERROR,
+            assertEquals(code==0?DiagnosticStatus.VALID_RESPONSE:code==1?DiagnosticStatus.NO_RESPONSE:code<0?DiagnosticStatus.UNKNOWN_EXIT_STATUS:DiagnosticStatus.COMMAND_ERROR,
                 CommandRunner.run(c,true,1000,new CancellationToken(),null).status);
         }
-        assertEquals(DiagnosticStatus.SSH_ERROR,DiagnosticResult.exitStatus(true,1,true));
-        assertEquals(DiagnosticStatus.SSH_ERROR,DiagnosticResult.exitStatus(false,1,false));
+        assertEquals(DiagnosticStatus.NO_RESPONSE,DiagnosticResult.exitStatus(true,1,true));
+        assertEquals(DiagnosticStatus.COMMAND_ERROR,DiagnosticResult.exitStatus(false,1,false));
+    }
+    @Test public void delayedExitStatusIsNotMisreportedAsSshFailure(){
+        long started=System.nanoTime();
+        Channel c=new Channel(new ByteArrayInputStream(new byte[0])){
+            public int exitCode(){return System.nanoTime()-started<java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(60)?-1:0;}
+        };c.finished=true;
+        assertEquals(DiagnosticStatus.VALID_RESPONSE,CommandRunner.run(c,false,1000,new CancellationToken(),null).status);
+        assertEquals(DiagnosticStatus.COMMAND_NOT_FOUND,DiagnosticResult.exitStatus(false,127,true));
     }
     @Test public void cancellationRunsEveryResourceOnceEvenIfOneFails(){
         CancellationToken token=new CancellationToken();AtomicInteger count=new AtomicInteger();

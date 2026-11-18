@@ -55,6 +55,7 @@ jobs:
           script: |
             adb push "$RUNNER_TEMP/synthetic-ocr-model.traineddata" /data/local/tmp/synthetic-ocr-model.traineddata
             gradle --no-daemon :app:connectedDebugAndroidTest
+            bash tools/profile_upgrade_probe.sh
       - name: Name APK with tablet version and compilation
         shell: bash
         run: |

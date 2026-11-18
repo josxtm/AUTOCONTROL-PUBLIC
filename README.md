@@ -57,6 +57,12 @@ Las pruebas OCR requieren aportar por separado el modelo de prueba verificado po
 
 Las APK debug de CI son **previews públicas con firma efímera**; no actualizan aplicaciones privadas ni garantizan continuidad de firma entre ejecuciones. [SIGNING.md](SIGNING.md) define un futuro canal permanente público independiente. [MIGRATION.md](MIGRATION.md) detalla las limitaciones.
 
+## Acciones SNIFFER por matrícula
+
+La fase de la issue #18 incorpora perfiles de direccionamiento privados versionados, paneles CT/Mango/equipos y acciones por botones. El cálculo requiere inventario y máscara válidos; no hay /24 ni lista de offsets implícitos. La WAN usa un alias temporal, confirmación explícita, detección de conflictos y restauración con caducidad. Los protocolos/puertos web se confirman antes de abrir el navegador. `id` comprueba el usuario y la terminal queda como herramienta avanzada.
+
+Consulta [flujo, configuración privada, seguridad, pruebas y límites físicos](docs/SNIFFER-ONE-CLICK-ACTIONS.md). Los perfiles y el manual del propietario no se distribuyen públicamente. El importador del PR #17, almacenamiento y paletas se conservan.
+
 ## Estabilización SNIFFER / SSH
 
 Los comandos de diagnóstico tienen un deadline monotónico de 5 segundos por defecto, cancelación que cierra el canal y salida limitada a 64 KiB. Los estados distinguen respuesta, ausencia de respuesta, timeout, error SSH/local, destino inválido, no configurado y cancelación. La sesión se conserva tras un timeout si sigue utilizable. El cierre de un canal bloqueado dispone de un último recurso que aborta el socket.

@@ -2,6 +2,8 @@ package com.josxtm.autocontrol.community
 
 import android.os.Bundle
 import com.josxtm.autocontrol.community.sniffer.SnifferPanel
+import com.josxtm.autocontrol.community.sniffer.ProfileMaintenanceModel
+import com.josxtm.autocontrol.community.sniffer.ProfileSettingsPanel
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +28,17 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val model: WorkspaceModel by viewModels()
+    private val profileModel: ProfileMaintenanceModel by viewModels()
+    private val profileImport = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(profileModel::importProfile) }
+    private val profileExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {
+        if (it == null) profileModel.clearPassword() else profileModel.backup(it, false)
+    }
+    private val profileRestore = registerForActivityResult(ActivityResultContracts.OpenDocument()) {
+        if (it == null) profileModel.clearPassword() else profileModel.backup(it, true)
+    }
+    private fun chooseProfile(action: () -> Unit) {
+        try { action() } catch (_: android.content.ActivityNotFoundException) { profileModel.selectorUnavailable() }
+    }
     private val catalog = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::previewCsv) }
     private val document = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importDocument) }
     private val ocrModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::importModel) }
@@ -46,7 +59,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val dark = model.theme == 2 || (model.theme == 0 && isSystemInDarkTheme())
             MaterialTheme(colorScheme = autoColorScheme(model.tabletTheme)) {
-                Workspace(model,
+                Workspace(model, profileModel,
+                    pickProfile = { chooseProfile { profileImport.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) } },
+                    exportProfile = { chooseProfile { profileExport.launch("autocontrol-direccionamiento.acip") } },
+                    restoreProfile = { chooseProfile { profileRestore.launch(arrayOf("*/*")) } },
                     pickCatalog = { choose { catalog.launch(arrayOf("*/*")) } },
                     pickDocument = { choose { document.launch(arrayOf("*/*")) } },
                     pickModel = { choose { ocrModel.launch(arrayOf("*/*")) } },
@@ -69,7 +85,8 @@ class MainActivity : ComponentActivity() {
     Button(onClick = action, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text(text) }
 }
 
-@Composable private fun Workspace(m: WorkspaceModel, pickCatalog: () -> Unit, pickDocument: () -> Unit,
+@Composable private fun Workspace(m: WorkspaceModel, profileModel: ProfileMaintenanceModel,
+    pickProfile: () -> Unit, exportProfile: () -> Unit, restoreProfile: () -> Unit, pickCatalog: () -> Unit, pickDocument: () -> Unit,
     pickModel: () -> Unit, pickImage: () -> Unit, exportDocument: () -> Unit, createBackup: () -> Unit, restoreBackup: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var confirm by remember { mutableStateOf("") }
@@ -91,7 +108,7 @@ class MainActivity : ComponentActivity() {
             }
             if (tab == 4) {
                 // The active SSH session must not be disposed by LazyColumn virtualization.
-                SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan)
+                SnifferPanel(Modifier.weight(1f).fillMaxHeight(), selectedCt = m.activeId, selectedLan = m.selectedCtLan, selectedRecord = m.record, onOpenProfileSettings = { tab = 5 })
             } else {
             LazyColumn(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Spacer(Modifier.height(8.dp)); Text(displayName, style = MaterialTheme.typography.titleLarge) }
@@ -198,7 +215,9 @@ class MainActivity : ComponentActivity() {
                         item { Text("Diagnóstico local: esquema público 1 · ${m.documents.size} documentos · modelo OCR ${if (m.ocrReady) "disponible" else "no importado"}. Sin diagnósticos de redes.") }
                     }
                     5 -> {
-                        item { Text("Configuración · Apariencia", style = MaterialTheme.typography.titleLarge) }
+                        item { Text("Configuración", style = MaterialTheme.typography.titleLarge) }
+                        item { ProfileSettingsPanel(profileModel, enabled, pickProfile, exportProfile, restoreProfile) }
+                        item { Text("Apariencia", style = MaterialTheme.typography.titleMedium) }
                         item { Text("Diez temas aprobados · iconografía V10") }
                         autoThemes.forEachIndexed { index, theme ->
                             item {

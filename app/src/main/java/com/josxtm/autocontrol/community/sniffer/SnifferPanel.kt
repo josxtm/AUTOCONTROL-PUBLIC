@@ -1,6 +1,7 @@
 package com.josxtm.autocontrol.community.sniffer
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,24 +26,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 
 
-private val targets = listOf("Router" to 1, "CC T1" to 2, "CC T2" to 3, "SABT T2" to 9, "SABT T1" to 11, "FFAA1" to 13, "Remota" to 14)
-
-private fun ipAt(base: String, offset: Int): String? =
-    try {
-        val address = base.trim().substringBefore("/")
-        val prefix = base.trim().substringAfter("/", "24").toInt()
-        LanTargets.at(address, prefix, offset)
-    } catch (_: IllegalArgumentException) { null }
-
 @Composable
-fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null) {
+fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, selectedLan: String? = null, selectedRecord: Map<String, String?> = emptyMap(), suppliedTransport: SshTransport? = null, onOpenProfileSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val profile = remember { context.getSharedPreferences("sniffer-ssh-profile", 0) }
     val scope = rememberCoroutineScope()
-    val transport = remember { SshTransport(context.getSharedPreferences("sniffer-known-hosts", 0)) }
+    val transport = remember(suppliedTransport) { suppliedTransport ?: SshTransport(context.getSharedPreferences("sniffer-known-hosts", 0)) }
     var tab by remember { mutableIntStateOf(0) }
-    var base by remember { mutableStateOf("") }
     var host by remember { mutableStateOf(profile.getString("host", "").orEmpty()) }
     var port by remember { mutableStateOf(profile.getString("port", "22").orEmpty()) }
     var user by remember { mutableStateOf(profile.getString("user", "").orEmpty()) }
@@ -54,37 +45,34 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
     var shell by remember { mutableStateOf(false) }
     var askShell by remember { mutableStateOf(false) }
     var approval by remember { mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null) }
-    var results by remember { mutableStateOf<Map<String, DiagnosticResult>>(emptyMap()) }
-    var scanEpoch by remember { mutableIntStateOf(0) }
-    var scanRunning by remember { mutableStateOf(false) }
-    var scanJob by remember { mutableStateOf<Job?>(null) }
     var historyVisible by remember { mutableStateOf(false) }
     var event by remember { mutableStateOf("Sin diagnósticos") }
     val history = remember { mutableStateListOf<String>() }
-    val notConfigured = remember { mutableStateMapOf<String, Boolean>() }
+    val actions = remember(transport) { CtActionState(context, transport, scope) }
+    var connectionState by remember(transport) { mutableStateOf(transport.connected()) }
+    val sessionConnected = connectionState && transport.connected()
+    LaunchedEffect(transport) {
+        while (true) {
+            connectionState = transport.connected()
+            if (!connectionState) shell = false
+            kotlinx.coroutines.delay(500)
+        }
+    }
     DisposableEffect(transport) {
-        onDispose { approval?.second?.complete(false); password=""; scanJob?.cancel(); transport.disconnect() }
+        onDispose { approval?.second?.complete(false); password=""; actions.dispose() }
     }
-    LaunchedEffect(selectedCt, selectedLan) {
-        scanEpoch++
-        scanJob?.cancel()
-        scanRunning = false
-        results = emptyMap()
-        notConfigured.clear()
-        base = selectedLan?.trim().orEmpty()
-        event = if (selectedCt == null) "Selecciona un CT en Registros, o introduce la red manualmente."
-            else if (selectedLan.isNullOrBlank()) "El CT seleccionado no contiene IP LAN: introduce una base manual."
-            else "Red cargada del CT seleccionado. Comprueba su máscara antes del escaneo."
-    }
+    LaunchedEffect(selectedCt, selectedLan, selectedRecord) { actions.changeCt(selectedCt, selectedRecord, selectedLan) }
 
 
     fun append(text: String) { output = (output + text).takeLast(20000) }
     fun connect() {
-        if (active) return
+        if (active || actions.busy || transport.connected()) return
         val p = port.toIntOrNull()
         if (p == null || !EndpointPolicy.valid(host.trim(), p, user.trim())) {
             status = "Host, puerto o usuario incorrectos"; return
         }
+        val endpointHost = host.trim()
+        val endpointUser = user.trim()
         val secret = password.toCharArray()
         password = ""
         active = true
@@ -92,7 +80,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         scope.launch {
             try {
                 cancellableDiagnostic { token ->
-                    transport.connect(host.trim(), p, user.trim(), secret, { endpoint, algorithm, fingerprint ->
+                    transport.connect(endpointHost, p, endpointUser, secret, { endpoint, algorithm, fingerprint ->
                         runBlocking {
                             val answer = CompletableDeferred<Boolean>()
                             withContext(Dispatchers.Main) {
@@ -110,7 +98,7 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 status = "SSH conectado · huella verificada"
             } catch (e: Exception) {
                 status = "Conexión fallida: " + e.javaClass.simpleName
-            } finally { secret.fill('\u0000'); active = false }
+            } finally { secret.fill('\u0000'); connectionState = transport.connected(); active = false }
         }
     }
     fun diagnostic(cmd: String) {
@@ -136,54 +124,21 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
         }
     }
 
-    fun startScan(source: DiagnosticSource) {
-        val requestedBase=base
-        val excluded=notConfigured.toMap()
-        val generation=++scanEpoch
-        results=emptyMap();scanRunning=true
-        scanJob=scope.launch {
-            try {
-                for((name,offset) in targets) {
-                    ensureActive()
-                    val address=ipAt(requestedBase,offset)
-                    val result=when {
-                        excluded[name]==true -> DiagnosticResult(name,address,source,DiagnosticStatus.NOT_CONFIGURED,0,null)
-                        address==null -> DiagnosticResult(name,null,source,DiagnosticStatus.INVALID_TARGET,0,null)
-                        source==DiagnosticSource.DIRECT_ANDROID -> cancellableDiagnostic { LocalDiagnostic.check(name,address,it) }
-                        else -> cancellableDiagnostic { token ->
-                            transport.diagnostic("ping -c 1 -W 2 $address",5000,token,null).forTarget(name,address)
-                        }
-                    }
-                    ensureActive()
-                    if(generation==scanEpoch)results=results+(name to result)
-                }
-                if(generation==scanEpoch)event="Diagnóstico finalizado: ${results.size} equipos."
-            } catch(cancelled: CancellationException) {
-                if(generation==scanEpoch) {
-                    results=results+targets.filter { it.first !in results }.associate { (name,offset) ->
-                        name to DiagnosticResult(name,ipAt(requestedBase,offset),source,DiagnosticStatus.CANCELLED,0,null)
-                    }
-                    event="Diagnóstico cancelado."
-                }
-                throw cancelled
-            } finally { if(generation==scanEpoch)scanRunning=false }
-        }
-    }
-
     Column(modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("SNIFFER LAN · MangoSSH integrado", style = MaterialTheme.typography.titleLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Escaneo", "Pings", "Equipos", "MangoSSH").forEachIndexed { i, label ->
+            listOf("Acciones CT", "MangoSSH avanzado").forEachIndexed { i, label ->
                 if (tab == i) Button(onClick = { tab = i }) { Text(label) }
                 else OutlinedButton(onClick = { tab = i }) { Text(label) }
             }
         }
-        if (tab == 3) {
+        if (tab == 1) {
+            Text(actions.message, style = MaterialTheme.typography.bodySmall)
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(.26f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(host, { host = it.take(253) }, label = { Text("Host SSH") }, singleLine = true)
-                    OutlinedTextField(port, { port = it.take(5) }, label = { Text("Puerto") }, singleLine = true)
-                    OutlinedTextField(user, { user = it.take(128) }, label = { Text("Usuario") }, singleLine = true)
+                    OutlinedTextField(host, { host = it.take(253) }, label = { Text("Host SSH") }, singleLine = true, enabled = !active && !actions.busy && !actions.leaseActive && !sessionConnected)
+                    OutlinedTextField(port, { port = it.take(5) }, label = { Text("Puerto") }, singleLine = true, enabled = !active && !actions.busy && !actions.leaseActive && !sessionConnected)
+                    OutlinedTextField(user, { user = it.take(128) }, label = { Text("Usuario") }, singleLine = true, enabled = !active && !actions.busy && !actions.leaseActive && !sessionConnected)
                     OutlinedTextField(password, { password = it.take(256) }, label = { Text("Contraseña temporal") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
                     OutlinedButton(onClick = {
                         val p = port.toIntOrNull()
@@ -194,15 +149,26 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                             status = "Perfil guardado localmente (sin contraseña)."
                         } else status = "Revisa host, puerto y usuario."
                     }) { Text("Guardar perfil") }
-                    Button(onClick = ::connect, enabled = !active && !transport.connected()) { Text("Conectar") }
-                    OutlinedButton(onClick = { scope.launch(Dispatchers.IO) { transport.disconnect(); withContext(Dispatchers.Main) { shell = false; status = "Desconectado" } } }) { Text("Desconectar") }
+                    Button(onClick = ::connect, enabled = !active && !actions.busy && !sessionConnected) { Text("Conectar") }
+                    OutlinedButton(onClick = { actions.disconnect(); shell = false; status = "Restaurando y desconectando…" }) { Text("Desconectar") }
                     Text(status)
                     Text("Comprueba siempre la huella del servidor.", style = MaterialTheme.typography.bodySmall)
                 }
                 Column(Modifier.weight(.51f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Consola SSH", style = MaterialTheme.typography.titleMedium)
+                    val consoleScroll = rememberScrollState()
+                    val dragging by consoleScroll.interactionSource.collectIsDraggedAsState()
+                    var follow by remember { mutableStateOf(true) }
+                    LaunchedEffect(dragging, consoleScroll.value) {
+                        if (dragging) follow = consoleScroll.maxValue - consoleScroll.value < 40
+                        else if (consoleScroll.value == consoleScroll.maxValue) follow = true
+                    }
+                    // Follow the measured content extent, after layout, rather than its previous height.
+                    LaunchedEffect(consoleScroll.maxValue, follow, dragging) {
+                        if (follow && !dragging) consoleScroll.scrollTo(consoleScroll.maxValue)
+                    }
                     Surface(Modifier.weight(1f).fillMaxWidth(), color = androidx.compose.ui.graphics.Color(0xFF20252A)) {
-                        Column(Modifier.verticalScroll(rememberScrollState()).padding(10.dp)) {
+                        Column(Modifier.verticalScroll(consoleScroll).padding(10.dp)) {
                             Text(output.ifBlank { "Sin salida" }, color = androidx.compose.ui.graphics.Color(0xFFF1F1F1), style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -212,15 +178,15 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                             val cmd = command; command = ""; if (CommandHistoryPolicy.rememberable(cmd)) history.add(cmd)
                             if (history.size > 20) history.removeAt(0)
                             scope.launch { try { withContext(Dispatchers.IO) { transport.send(cmd) } } catch (_: Exception) { status = "Error al enviar comando" } }
-                        }, enabled = shell && command.isNotBlank()) { Text("Enviar") }
+                        }, enabled = shell && sessionConnected && command.isNotBlank()) { Text("Enviar") }
                     }
                 }
                 Column(Modifier.weight(.23f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Comandos rápidos")
-                    listOf("whoami", "pwd", "date", "uname -a", "df -h").forEach { cmd ->
-                        OutlinedButton(onClick = { diagnostic(cmd) }, enabled = transport.connected(), modifier = Modifier.fillMaxWidth()) { Text(cmd) }
+                    listOf("id", "pwd", "date", "uname -a", "df -h").forEach { cmd ->
+                        OutlinedButton(onClick = { diagnostic(cmd) }, enabled = sessionConnected, modifier = Modifier.fillMaxWidth()) { Text(cmd) }
                     }
-                    OutlinedButton(onClick = { askShell = true }, enabled = transport.connected() && !shell) { Text("Activar terminal") }
+                    OutlinedButton(onClick = { askShell = true }, enabled = sessionConnected && !shell) { Text("Activar terminal") }
                     OutlinedButton(onClick = { clipboard.setText(AnnotatedString(output)) }, enabled = output.isNotEmpty()) { Text("Copiar salida") }
                     OutlinedButton(onClick = { output = ""; history.clear() }) { Text("Limpiar salida") }
                     OutlinedButton(onClick = { historyVisible = !historyVisible }) { Text(if (historyVisible) "Ocultar historial" else "Ver historial") }
@@ -235,33 +201,27 @@ fun SnifferPanel(modifier: Modifier = Modifier, selectedCt: String? = null, sele
                 }
             }
         } else {
-            Text(event, style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(base, { scanEpoch++; scanJob?.cancel(); scanRunning=false; base = it.take(18); results = emptyMap() }, label = { Text("IP LAN base del CT (IPv4 o CIDR)") }, singleLine = true)
-            if (tab == 0 || tab == 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { startScan(DiagnosticSource.DIRECT_ANDROID) },
-                    enabled = !scanRunning && ipAt(base,14)!=null) { Text(if(scanRunning) "Escaneando…" else "Iniciar comprobación") }
-                OutlinedButton(onClick = { startScan(DiagnosticSource.MANGO_SSH) },
-                    enabled = !scanRunning && transport.connected() && ipAt(base,14)!=null) { Text("Ping desde Mango") }
-                OutlinedButton(onClick = { scanJob?.cancel() }, enabled = scanRunning) { Text("Cancelar") }
+            CtActionsPanel(actions, host, sessionConnected && !active, onOpenProfileSettings) {
+                val canReconnect = !active && !actions.busy && !sessionConnected
+                val canEdit = canReconnect && !actions.leaseActive
+                OutlinedTextField(host, { host = it.take(253) }, label = { Text("IPv4 Mango (gestión SSH)") }, enabled = canEdit, singleLine = true)
+                OutlinedTextField(port, { port = it.take(5) }, label = { Text("Puerto SSH") }, enabled = canEdit, singleLine = true)
+                OutlinedTextField(user, { user = it.take(128) }, label = { Text("Usuario") }, enabled = canEdit, singleLine = true)
+                OutlinedTextField(password, { password = it.take(256) }, label = { Text("Contraseña de sesión") }, enabled = canReconnect, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                Button(onClick = ::connect, enabled = canReconnect) { Text("Conectar Mango") }
+                OutlinedButton(onClick = { actions.disconnect(); shell = false; status = "Restaurando y desconectando…" }, enabled = !actions.busy) { Text("Desconectar y restaurar") }
+                OutlinedButton(onClick = {
+                    val p = port.toIntOrNull()
+                    if (p != null && EndpointPolicy.valid(host.trim(), p, user.trim())) {
+                        profile.edit().putString("host", host.trim()).putString("port", port.trim()).putString("user", user.trim()).apply()
+                        status = "Perfil guardado sin contraseña."
+                    } else status = "Revisa el perfil SSH."
+                }, enabled = canEdit) { Text("Guardar perfil Mango") }
+                Text(if (active || sessionConnected) status else "Sin conexión SSH", style = MaterialTheme.typography.bodySmall)
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                items(targets) { (name, offset) ->
-                    val computed = ipAt(base, offset) ?: "—"
-                    ListItem(headlineContent = { Text(name) },
-                        supportingContent = { Text(results[name]?.let { "${it.address ?: computed} · ${it.label()}" } ?: computed) },
-                        trailingContent = {
-                            if (tab == 2) {
-                                Checkbox(checked = notConfigured[name] == true,
-                                    onCheckedChange = { notConfigured[name] = it })
-                                Text("No instalado", style = MaterialTheme.typography.labelSmall)
-                            }
-                        })
-                }
-            }
-            Text("En Equipos puedes marcar los dispositivos no instalados para excluirlos del diagnóstico. La falta de respuesta ICMP no confirma desconexión.",
-                style = MaterialTheme.typography.bodySmall)
         }
     }
+
     approval?.let { (prompt, deferred) ->
         AlertDialog(onDismissRequest = { if (!deferred.isCompleted) deferred.complete(false); approval = null },
             title = { Text("Identidad del servidor SSH") }, text = { Text(prompt) },
