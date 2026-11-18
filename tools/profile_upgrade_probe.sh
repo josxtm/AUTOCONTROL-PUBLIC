@@ -5,6 +5,12 @@ probe_dir=app/build/outputs/androidTest-results/profile-compatibility
 mkdir -p "$probe_dir"
 probe_test=com.josxtm.autocontrol.community.sniffer.ProfileCompatibilityTest
 probe_package=com.josxtm.autocontrol.community
+# connectedDebugAndroidTest removes its packages at teardown. Install both explicitly
+# so this separate process/upgrade probe does not depend on Gradle's device cleanup.
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk | tee "$probe_dir/initial-install.txt"
+grep -q '^Success' "$probe_dir/initial-install.txt"
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk | tee "$probe_dir/test-install.txt"
+grep -q '^Success' "$probe_dir/test-install.txt"
 for probe_phase in seed verify; do
   if [[ "$probe_phase" == verify ]]; then
     adb shell am force-stop "$probe_package"
